@@ -67,7 +67,7 @@ def inicializar(conexao):
         );
 
         CREATE TABLE IF NOT EXISTS bilhetes_favoritos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id INTEGER PRIMARY KEY,
             nome TEXT,
             modalidade TEXT NOT NULL,
             dezenas_json TEXT NOT NULL,

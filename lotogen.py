@@ -494,6 +494,61 @@ def valores_favorito(modalidade, bilhete):
     return [str(valor).strip("{}") for valor in bilhete]
 
 
+def seleciona_bilhetes_para_salvar(bilhetes):
+    opcoes = []
+
+    for indice, (modalidade, numero, bilhete) in enumerate(bilhetes, start=1):
+        if valores_favorito(modalidade, bilhete) is not None:
+            opcoes.append((indice, modalidade, numero, bilhete))
+
+    if not opcoes:
+        print("Nenhum bilhete gerado pode ser salvo nos favoritos por enquanto.")
+        return []
+
+    while True:
+        resposta = normaliza_nome(
+            input("Qual bilhete deseja salvar? [números, todos ou ENTER para nenhum] ")
+        )
+
+        if not resposta:
+            return []
+
+        if resposta in ("todos", "t"):
+            return opcoes
+
+        selecionados = []
+        partes = resposta.replace(",", " ").split()
+
+        try:
+            indices = [int(parte) for parte in partes]
+        except ValueError:
+            print("Informe números separados por espaço, todos ou ENTER.")
+            continue
+
+        invalidos = [indice for indice in indices if not 1 <= indice <= len(bilhetes)]
+
+        if invalidos:
+            print(f"Bilhete inválido: {invalidos[0]}.")
+            continue
+
+        indices_opcoes = {indice for indice, _modalidade, _numero, _bilhete in opcoes}
+        nao_suportados = [indice for indice in indices if indice not in indices_opcoes]
+
+        if nao_suportados:
+            print(f"Bilhete {nao_suportados[0]} ainda não pode ser salvo nos favoritos.")
+            continue
+
+        vistos = set()
+        for opcao in opcoes:
+            indice = opcao[0]
+
+            if indice in indices and indice not in vistos:
+                selecionados.append(opcao)
+                vistos.add(indice)
+
+        return selecionados
+
+
 def salvar_bilhetes_favoritos(bilhetes):
     from favoritos import cria_favorito
 
@@ -503,17 +558,10 @@ def salvar_bilhetes_favoritos(bilhetes):
     if not le_sim_nao("Deseja salvar algum bilhete nos favoritos? [S/N ou 1/0] "):
         return
 
-    for modalidade, numero, bilhete in bilhetes:
+    for _indice, modalidade, numero, bilhete in seleciona_bilhetes_para_salvar(bilhetes):
         valores = valores_favorito(modalidade, bilhete)
 
-        if valores is None:
-            print(f"{modalidade} #{numero}: favoritos ainda não suportam Loteca.")
-            continue
-
-        if not le_sim_nao(f"Salvar {modalidade} #{numero}? [S/N ou 1/0] "):
-            continue
-
-        nome = input("Nome opcional do favorito: ").strip() or None
+        nome = input(f"Nome opcional para {modalidade} #{numero}: ").strip() or None
 
         try:
             favorito_id, _modalidade, _dezenas, _extra = cria_favorito(
@@ -952,7 +1000,7 @@ def checa_bancos_historicos(escolhidos):
             print(f"Não consegui atualizar a Loteca: {erro}")
 
 
-def main():
+def gerar_bilhetes():
     opcoes = opcoes_modalidades()
     imprime_menu(opcoes)
     escolhidos = le_modalidades(opcoes)
@@ -1018,6 +1066,14 @@ def main():
             print(f"{modalidade} #{numero}: {bilhete_formatado}")
 
     salvar_bilhetes_favoritos(bilhetes)
+
+
+def main():
+    while True:
+        gerar_bilhetes()
+
+        if not le_sim_nao("Deseja gerar novos bilhetes? [S/N ou 1/0] "):
+            return
 
 
 if __name__ == "__main__":

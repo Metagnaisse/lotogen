@@ -5,7 +5,7 @@ import json
 from unicodedata import normalize
 
 from banco_lotogen import listar_favoritos, remover_favorito, salvar_favorito
-from lotogen import MODALIDADES, formata_numero, lista_times, nome_modalidade
+from lotogen import MODALIDADES, formata_numero, lista_times, nome_modalidade, opcoes_modalidades
 
 
 def normaliza_texto(texto):
@@ -195,6 +195,34 @@ def cmd_remover(args):
         print(f"Favorito {args.id} não encontrado.")
 
 
+def imprime_menu_modalidades():
+    opcoes = opcoes_modalidades()
+    indices = list(range(1, len(opcoes))) + [0]
+
+    print("Modalidade:")
+    for indice in indices:
+        print(f"{indice}. {opcoes[indice]}")
+
+
+def le_modalidade():
+    opcoes = opcoes_modalidades()
+
+    while True:
+        imprime_menu_modalidades()
+        resposta = input("Escolha: ").strip()
+
+        try:
+            indice = int(resposta)
+        except ValueError:
+            print("Informe o número da modalidade.")
+            continue
+
+        if 0 <= indice < len(opcoes):
+            return opcoes[indice]
+
+        print("Opção inválida.")
+
+
 def modo_interativo():
     while True:
         print()
@@ -213,7 +241,7 @@ def modo_interativo():
             continue
 
         if opcao == "2":
-            modalidade = input("Modalidade: ").strip()
+            modalidade = le_modalidade()
             valores = input("Dezenas e extra, se houver: ").strip().split()
             nome = input("Nome opcional: ").strip() or None
 
