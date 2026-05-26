@@ -35,6 +35,7 @@ class JogoLoteca:
     data: str | None = None
     sequencial: int | None = None
     dia_semana: str | None = None
+    competicao: str | None = None
 
 
 def normaliza_nome(nome):
@@ -115,6 +116,7 @@ def jogos_oficiais_do_concurso(concurso):
             data=jogo.get("data"),
             sequencial=jogo.get("sequencial"),
             dia_semana=jogo.get("dia_semana"),
+            competicao=jogo.get("competicao"),
         )
         for jogo in jogos
     ]

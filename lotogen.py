@@ -244,7 +244,7 @@ def gera_bilhete_comum(modalidade, quantidade=None):
     return numeros
 
 
-def gera_bilhete_historico(modalidade, quantidade, estrategia, concursos=200):
+def gera_bilhete_historico(modalidade, quantidade, estrategia, concursos=0):
     regra = MODALIDADES[modalidade]
     quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
     numeros, consultados = dezenas_por_frequencia(
@@ -264,7 +264,7 @@ def gera_bilhete_historico(modalidade, quantidade, estrategia, concursos=200):
     return bilhete, consultados
 
 
-def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concursos=200):
+def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concursos=0):
     regra = MODALIDADES[modalidade]
     quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
 
@@ -477,6 +477,56 @@ def formata_bilhete(bilhete):
     return "[" + " ".join(bilhete) + "]"
 
 
+def valores_favorito(modalidade, bilhete):
+    modalidade = nome_modalidade(modalidade)
+
+    if modalidade == "loteca":
+        return None
+
+    if modalidade == "super-sete":
+        return bilhete
+
+    if modalidade == "mais-milionaria":
+        dezenas = [valor for valor in bilhete if not str(valor).startswith("{")]
+        trevos = [str(valor).strip("{}") for valor in bilhete if str(valor).startswith("{")]
+        return dezenas + trevos
+
+    return [str(valor).strip("{}") for valor in bilhete]
+
+
+def salvar_bilhetes_favoritos(bilhetes):
+    from favoritos import cria_favorito
+
+    if not bilhetes:
+        return
+
+    if not le_sim_nao("Deseja salvar algum bilhete nos favoritos? [S/N ou 1/0] "):
+        return
+
+    for modalidade, numero, bilhete in bilhetes:
+        valores = valores_favorito(modalidade, bilhete)
+
+        if valores is None:
+            print(f"{modalidade} #{numero}: favoritos ainda não suportam Loteca.")
+            continue
+
+        if not le_sim_nao(f"Salvar {modalidade} #{numero}? [S/N ou 1/0] "):
+            continue
+
+        nome = input("Nome opcional do favorito: ").strip() or None
+
+        try:
+            favorito_id, _modalidade, _dezenas, _extra = cria_favorito(
+                modalidade,
+                valores,
+                nome=nome,
+            )
+        except ValueError as erro:
+            print(f"Não consegui salvar favorito: {erro}")
+        else:
+            print(f"Favorito {favorito_id} salvo.")
+
+
 def le_inteiro(mensagem, minimo=1, maximo=None, padrao=None):
     while True:
         resposta = input(mensagem).strip()
@@ -505,13 +555,13 @@ def le_sim_nao(mensagem):
     while True:
         resposta = normaliza_nome(input(mensagem))
 
-        if resposta in ("s", "sim"):
+        if resposta in ("1", "s", "sim"):
             return True
 
-        if resposta in ("n", "nao"):
+        if resposta in ("0", "n", "nao"):
             return False
 
-        print("Responda com S ou N.")
+        print("Responda com S/1 ou N/0.")
 
 
 def le_modo_loteca():
@@ -546,7 +596,7 @@ def le_estrategia_numerica():
 
 
 def le_quantidade_concursos():
-    return le_inteiro("Consultar quantos concursos históricos? [200, 0=todos] ", 0, padrao=200)
+    return le_inteiro("Consultar quantos concursos históricos? [Informe um número ou ENTER para todos] ", 0, padrao=0)
 
 
 def opcoes_modalidades():
@@ -597,7 +647,7 @@ def quantidade_aposta(modalidade):
     if regra is None or regra["min"] == regra["max"]:
         return None
 
-    multipla = le_sim_nao("Quer aposta múltipla? [S/N] ")
+    multipla = le_sim_nao("Quer aposta múltipla? [S/N ou 1/0] ")
 
     if not multipla:
         return None
@@ -883,7 +933,7 @@ def checa_bancos_historicos(escolhidos):
     if not defasados and not loteca_defasada:
         return
 
-    if not le_sim_nao("Deseja atualizar os bancos defasados agora? [S/N] "):
+    if not le_sim_nao("Deseja atualizar os bancos defasados agora? [S/N ou 1/0] "):
         return
 
     for modalidade, _cobertura in defasados:
@@ -966,6 +1016,8 @@ def main():
             print(f"{modalidade} #{numero}:{bilhete_formatado}")
         else:
             print(f"{modalidade} #{numero}: {bilhete_formatado}")
+
+    salvar_bilhetes_favoritos(bilhetes)
 
 
 if __name__ == "__main__":

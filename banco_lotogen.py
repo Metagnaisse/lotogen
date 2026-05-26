@@ -57,6 +57,7 @@ def inicializar(conexao):
             visitante TEXT NOT NULL,
             dia_semana TEXT,
             data_jogo TEXT,
+            competicao TEXT,
             odd_mandante REAL,
             odd_empate REAL,
             odd_visitante REAL,
@@ -64,9 +65,29 @@ def inicializar(conexao):
             PRIMARY KEY (concurso, sequencial),
             FOREIGN KEY (concurso) REFERENCES loteca_concursos(concurso)
         );
+
+        CREATE TABLE IF NOT EXISTS bilhetes_favoritos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT,
+            modalidade TEXT NOT NULL,
+            dezenas_json TEXT NOT NULL,
+            extra TEXT,
+            criado_em TEXT NOT NULL
+        );
         """
     )
+    migrar_loteca_jogos(conexao)
     conexao.commit()
+
+
+def coluna_existe(conexao, tabela, coluna):
+    linhas = conexao.execute(f"PRAGMA table_info({tabela})").fetchall()
+    return any(linha["name"] == coluna for linha in linhas)
+
+
+def migrar_loteca_jogos(conexao):
+    if not coluna_existe(conexao, "loteca_jogos", "competicao"):
+        conexao.execute("ALTER TABLE loteca_jogos ADD COLUMN competicao TEXT")
 
 
 def maior_concurso_numerico(modalidade):
@@ -215,9 +236,9 @@ def salvar_loteca(concurso, jogos, data_proximo_concurso=None):
                 INSERT OR REPLACE INTO loteca_jogos
                     (
                         concurso, sequencial, mandante, visitante, dia_semana, data_jogo,
-                        odd_mandante, odd_empate, odd_visitante, atualizado_em
+                        competicao, odd_mandante, odd_empate, odd_visitante, atualizado_em
                     )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     int(concurso),
@@ -226,6 +247,7 @@ def salvar_loteca(concurso, jogos, data_proximo_concurso=None):
                     jogo.visitante,
                     getattr(jogo, "dia_semana", None),
                     getattr(jogo, "data", None),
+                    getattr(jogo, "competicao", None),
                     jogo.odd_mandante,
                     jogo.odd_empate,
                     jogo.odd_visitante,
@@ -269,6 +291,66 @@ def jogos_loteca(concurso=None):
             "odds": [linha["odd_mandante"], linha["odd_empate"], linha["odd_visitante"]],
             "mandante": linha["mandante"],
             "visitante": linha["visitante"],
+            "competicao": linha["competicao"],
         }
         for linha in linhas
     ]
+
+
+def competicoes_loteca():
+    with conectar() as conexao:
+        return list(
+            conexao.execute(
+                """
+                SELECT competicao, COUNT(*) AS total
+                FROM loteca_jogos
+                WHERE competicao IS NOT NULL AND TRIM(competicao) <> ''
+                GROUP BY competicao
+                ORDER BY total DESC, competicao
+                """
+            )
+        )
+
+
+def salvar_favorito(modalidade, dezenas, extra=None, nome=None):
+    with conectar() as conexao:
+        cursor = conexao.execute(
+            """
+            INSERT INTO bilhetes_favoritos
+                (nome, modalidade, dezenas_json, extra, criado_em)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                nome,
+                modalidade,
+                json.dumps([str(dezena) for dezena in dezenas], ensure_ascii=False),
+                extra,
+                agora_iso(),
+            ),
+        )
+        conexao.commit()
+        return int(cursor.lastrowid)
+
+
+def listar_favoritos(modalidade=None):
+    sql = "SELECT * FROM bilhetes_favoritos"
+    parametros = []
+
+    if modalidade:
+        sql += " WHERE modalidade = ?"
+        parametros.append(modalidade)
+
+    sql += " ORDER BY modalidade, id"
+
+    with conectar() as conexao:
+        return list(conexao.execute(sql, parametros))
+
+
+def remover_favorito(favorito_id):
+    with conectar() as conexao:
+        cursor = conexao.execute(
+            "DELETE FROM bilhetes_favoritos WHERE id = ?",
+            (int(favorito_id),),
+        )
+        conexao.commit()
+        return cursor.rowcount > 0

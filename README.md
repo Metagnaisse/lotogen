@@ -42,10 +42,13 @@ python lotogen.py
 
 O programa mostra um menu com as modalidades disponíveis. Informe os números das modalidades desejadas, a quantidade de bilhetes e, quando aplicável, a quantidade de números por aposta múltipla.
 
+Nas perguntas de sim/não, o programa aceita `S` ou `1` para sim e `N` ou `0` para não.
+
 Ao escolher Loteca, o programa pergunta se você deseja atualizar `loteca_atual.csv` antes de gerar os bilhetes. Se `THE_ODDS_API_KEY` estiver configurada, ele tenta buscar as odds automaticamente; caso contrário, ou se alguma odd não for encontrada, pergunta os valores manualmente.
 
-Nas modalidades numéricas, o programa também permite escolher entre geração aleatória, números mais sorteados ou números menos sorteados. Para as opções históricas, ele sincroniza os resultados da Caixa com o banco local; por padrão usa os últimos 200 concursos, mas você pode informar `0` para usar todos os concursos disponíveis. Se não conseguir atualizar pela internet, usa o histórico local disponível.
+Nas modalidades numéricas, o programa também permite escolher entre geração aleatória, números mais sorteados ou números menos sorteados. Para as opções históricas, ele sincroniza os resultados da Caixa com o banco local; por padrão usa todos os concursos disponíveis, mas você pode informar um número para limitar a consulta. Se não conseguir atualizar pela internet, usa o histórico local disponível.
 Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura local de cada banco escolhido. Para modalidades numéricas, oferece atualização quando o banco histórico está vazio ou com menos de 75% dos concursos disponíveis. Se a Loteca for escolhida, também compara o concurso local com o concurso atual da Caixa e oferece atualizar quando estiver defasada.
+Depois de imprimir os bilhetes gerados, o programa pergunta se você deseja salvar algum deles nos favoritos.
 
 ## Loteca
 
@@ -117,11 +120,25 @@ Com `THE_ODDS_API_KEY` configurada, ele também tenta exibir as odds 1X2 encontr
 
 Esse script depende de acesso a internet e da disponibilidade da API.
 
+## Bilhetes Favoritos
+
+O arquivo `favoritos.py` permite cadastrar, listar e remover bilhetes favoritos no banco local:
+
+```powershell
+python favoritos.py adicionar timemania 04 06 08 09 10 27 46 75 76 79 Internacional/RS
+python favoritos.py adicionar mega 03 04 09 12 23 51
+python favoritos.py listar
+python favoritos.py remover 1
+```
+
+Ao executar `python favoritos.py` sem subcomando, ele abre um menu interativo.
+
 ## Estrutura
 
 - `lotogen.py`: gerador principal e leitura de CSV/XLSX da Loteca.
 - `gera_loteca.py`: assistente para gerar ou atualizar `loteca_atual.csv`.
 - `consulta_loteca.py`: consulta reutilizável da programação da Loteca.
+- `favoritos.py`: gerenciador de bilhetes favoritos.
 - `historico_loterias.py`: consulta resultados históricos das modalidades numéricas.
 - `banco_lotogen.py`: cria e acessa o banco SQLite local.
 - `lotogen.db`: banco local criado automaticamente.

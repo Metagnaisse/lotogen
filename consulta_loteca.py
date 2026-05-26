@@ -356,6 +356,11 @@ def buscar_odds_the_odds_api_por_sport(sport, inicio, fim):
 
     resposta.raise_for_status()
     eventos = resposta.json()
+
+    for evento in eventos:
+        if isinstance(evento, dict):
+            evento["sport_key"] = sport
+
     depurar(f"{sport}: {len(eventos)} eventos")
     return eventos
 
@@ -449,6 +454,7 @@ def completar_odds_the_odds_api(jogos):
         jogo["odds_status"] = "ok"
         jogo["odds_match_score"] = score
         jogo["odds_melhor_candidato"] = nome
+        jogo["competicao"] = evento.get("sport_key")
 
     return jogos
 
