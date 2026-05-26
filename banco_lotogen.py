@@ -1,4 +1,4 @@
-"""Persistencia local do Lotogen em SQLite."""
+"""Persistência local do Lotogen em SQLite."""
 
 import json
 import os

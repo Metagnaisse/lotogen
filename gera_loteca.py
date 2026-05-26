@@ -1,8 +1,8 @@
 """Atualiza o loteca_atual.csv com jogos e odds da Loteca.
 
-Os jogos oficiais sao descobertos pela API da Caixa via consulta_loteca.py.
-Quando THE_ODDS_API_KEY estiver configurada, as odds 1X2 sao buscadas
-automaticamente. Odds faltantes sao solicitadas manualmente.
+Os jogos oficiais são descobertos pela API da Caixa via consulta_loteca.py.
+Quando THE_ODDS_API_KEY estiver configurada, as odds 1X2 são buscadas
+automaticamente. Odds faltantes são solicitadas manualmente.
 """
 
 import argparse

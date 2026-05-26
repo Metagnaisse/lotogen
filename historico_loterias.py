@@ -1,4 +1,4 @@
-"""Consulta resultados historicos das loterias numericas da Caixa."""
+"""Consulta resultados históricos das loterias numéricas da Caixa."""
 
 import json
 from collections import Counter

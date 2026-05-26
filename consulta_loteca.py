@@ -1,4 +1,4 @@
-"""Consulta a programacao atual da Loteca e odds 1X2 pela The Odds API."""
+"""Consulta a programação atual da Loteca e odds 1X2 pela The Odds API."""
 
 import os
 from datetime import datetime, timedelta

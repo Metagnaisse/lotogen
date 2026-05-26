@@ -1,23 +1,23 @@
 # Lotogen
 
-Gerador interativo de bilhetes para loterias numericas da Caixa, com suporte a Loteca usando odds 1X2.
+Gerador interativo de bilhetes para loterias numéricas da Caixa, com suporte a Loteca usando odds 1X2.
 
 ## O que o projeto faz
 
-- Gera bilhetes para Mega-Sena, Lotofacil, Quina, Lotomania, Timemania, Dupla-Sena, Dia de Sorte, Super Sete e +Milionaria.
+- Gera bilhetes para Mega-Sena, Lotofácil, Quina, Lotomania, Timemania, Dupla-Sena, Dia de Sorte, Super Sete e +Milionária.
 - Gera palpites da Loteca a partir de odds de mandante, empate e visitante.
-- Le dados da Loteca em `loteca_atual.csv` ou em uma planilha `.xlsx`.
+- Lê dados da Loteca em `loteca_atual.csv` ou em uma planilha `.xlsx`.
 - Inclui um script auxiliar para atualizar o `loteca_atual.csv`.
-- Inclui uma consulta da programacao da Loteca na API publica da Caixa.
+- Inclui uma consulta da programação da Loteca na API pública da Caixa.
 - Pode buscar odds 1X2 automaticamente pela The Odds API.
-- Salva resultados e frequencias em um banco SQLite local (`lotogen.db`).
+- Salva resultados e frequências em um banco SQLite local (`lotogen.db`).
 
 ## Requisitos
 
 - Python 3.11 ou superior.
-- Dependencias listadas em `requirements.txt`.
+- Dependências listadas em `requirements.txt`.
 
-## Instalacao
+## Instalação
 
 Crie e ative um ambiente virtual:
 
@@ -26,7 +26,7 @@ python -m venv venv
 .\venv\Scripts\Activate.ps1
 ```
 
-Instale as dependencias:
+Instale as dependências:
 
 ```powershell
 pip install -r requirements.txt
@@ -40,12 +40,12 @@ Execute o gerador principal:
 python lotogen.py
 ```
 
-O programa mostra um menu com as modalidades disponiveis. Informe os numeros das modalidades desejadas, a quantidade de bilhetes e, quando aplicavel, a quantidade de numeros por aposta multipla.
+O programa mostra um menu com as modalidades disponíveis. Informe os números das modalidades desejadas, a quantidade de bilhetes e, quando aplicável, a quantidade de números por aposta múltipla.
 
-Ao escolher Loteca, o programa pergunta se voce deseja atualizar `loteca_atual.csv` antes de gerar os bilhetes. Se `THE_ODDS_API_KEY` estiver configurada, ele tenta buscar as odds automaticamente; caso contrario, ou se alguma odd nao for encontrada, pergunta os valores manualmente.
+Ao escolher Loteca, o programa pergunta se você deseja atualizar `loteca_atual.csv` antes de gerar os bilhetes. Se `THE_ODDS_API_KEY` estiver configurada, ele tenta buscar as odds automaticamente; caso contrário, ou se alguma odd não for encontrada, pergunta os valores manualmente.
 
-Nas modalidades numericas, o programa tambem permite escolher entre geracao aleatoria, numeros mais sorteados ou numeros menos sorteados. Para as opcoes historicas, ele sincroniza os resultados da Caixa com o banco local; por padrao usa os ultimos 200 concursos, mas voce pode informar `0` para usar todos os concursos disponiveis. Se nao conseguir atualizar pela internet, usa o historico local disponivel.
-Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura local de cada banco escolhido. Para modalidades numericas, oferece atualizacao quando o banco historico esta vazio ou com menos de 75% dos concursos disponiveis. Se a Loteca for escolhida, tambem compara o concurso local com o concurso atual da Caixa e oferece atualizar quando estiver defasada.
+Nas modalidades numéricas, o programa também permite escolher entre geração aleatória, números mais sorteados ou números menos sorteados. Para as opções históricas, ele sincroniza os resultados da Caixa com o banco local; por padrão usa os últimos 200 concursos, mas você pode informar `0` para usar todos os concursos disponíveis. Se não conseguir atualizar pela internet, usa o histórico local disponível.
+Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura local de cada banco escolhido. Para modalidades numéricas, oferece atualização quando o banco histórico está vazio ou com menos de 75% dos concursos disponíveis. Se a Loteca for escolhida, também compara o concurso local com o concurso atual da Caixa e oferece atualizar quando estiver defasada.
 
 ## Loteca
 
@@ -56,9 +56,9 @@ odd_mandante;odd_empate;odd_visitante;time_mandante;time_visitante
 1.80;3.20;4.50;TIME A;TIME B
 ```
 
-As tres primeiras colunas sao obrigatorias e devem conter odds maiores que 1. As colunas dos times sao opcionais, mas ajudam a imprimir os palpites com nomes dos confrontos.
+As três primeiras colunas são obrigatórias e devem conter odds maiores que 1. As colunas dos times são opcionais, mas ajudam a imprimir os palpites com nomes dos confrontos.
 
-Tambem e possivel usar uma planilha `.xlsx` com as mesmas colunas:
+Também é possível usar uma planilha `.xlsx` com as mesmas colunas:
 
 - Coluna A: odd do mandante
 - Coluna B: odd do empate
@@ -68,14 +68,14 @@ Tambem e possivel usar uma planilha `.xlsx` com as mesmas colunas:
 
 ## Atualizar o CSV da Loteca
 
-Voce pode atualizar pelo proprio `lotogen.py` ao escolher Loteca, ou usar o script auxiliar:
+Você pode atualizar pelo próprio `lotogen.py` ao escolher Loteca, ou usar o script auxiliar:
 
 ```powershell
 python gera_loteca.py
 ```
 
-Ele busca os 14 jogos oficiais na API da Caixa, pergunta as odds se necessario, salva no banco local e atualiza `loteca_atual.csv`.
-Se o banco local ou `loteca_atual.csv` ja estiverem no concurso atual, o script nao consulta a The Odds API novamente.
+Ele busca os 14 jogos oficiais na API da Caixa, pergunta as odds se necessário, salva no banco local e atualiza `loteca_atual.csv`.
+Se o banco local ou `loteca_atual.csv` já estiverem no concurso atual, o script não consulta a The Odds API novamente.
 
 Para tentar preencher as odds automaticamente pela The Odds API, configure a chave antes de rodar:
 
@@ -84,19 +84,21 @@ $env:THE_ODDS_API_KEY="sua_chave_aqui"
 python gera_loteca.py
 ```
 
-Se alguma odd nao for encontrada, o programa pergunta manualmente apenas os jogos pendentes.
+Consulte a documentação oficial da The Odds API em <https://the-odds-api.com/liveapi/guides/v4/>. No momento, a The Odds API oferece um plano gratuito limitado para testes e protótipos, sem cartão de crédito, mas os limites e condições podem mudar. O limite atual do plano gratuito é suficiente para o uso neste programa.
 
-Variaveis opcionais:
+Se alguma odd não for encontrada, o programa pergunta manualmente apenas os jogos pendentes.
 
-- `THE_ODDS_API_SPORT_KEYS`: lista de competicoes separadas por virgula. Padrao: `soccer_brazil_campeonato,soccer_brazil_serie_b,soccer_epl`.
-- `THE_ODDS_API_ALL_SOCCER`: consulta todas as competicoes de futebol ativas da The Odds API. Padrao: desligado.
-- `THE_ODDS_API_REGIONS`: regioes de casas de aposta. Padrao: `eu,uk`.
-- `THE_ODDS_API_BOOKMAKERS`: filtra casas de aposta especificas e substitui `THE_ODDS_API_REGIONS`.
-- `THE_ODDS_API_DEBUG`: mostra detalhes tecnicos das chamadas da The Odds API. Padrao: desligado.
-- `THE_ODDS_API_MATCH_MIN_SCORE`: pontuacao minima para casar nomes de times. Padrao: `0.78`.
-- `LOTOGEN_COBERTURA_MINIMA`: cobertura minima do banco historico antes de oferecer atualizacao. Padrao: `0.75`.
+Variáveis opcionais:
 
-Opcoes uteis:
+- `THE_ODDS_API_SPORT_KEYS`: lista de competições separadas por vírgula. Padrão: `soccer_brazil_campeonato,soccer_brazil_serie_b,soccer_epl`.
+- `THE_ODDS_API_ALL_SOCCER`: consulta todas as competições de futebol ativas da The Odds API. Padrão: desligado.
+- `THE_ODDS_API_REGIONS`: regiões de casas de aposta. Padrão: `eu,uk`.
+- `THE_ODDS_API_BOOKMAKERS`: filtra casas de aposta específicas e substitui `THE_ODDS_API_REGIONS`.
+- `THE_ODDS_API_DEBUG`: mostra detalhes técnicos das chamadas da The Odds API. Padrão: desligado.
+- `THE_ODDS_API_MATCH_MIN_SCORE`: pontuação mínima para casar nomes de times. Padrão: `0.78`.
+- `LOTOGEN_COBERTURA_MINIMA`: cobertura mínima do banco histórico antes de oferecer atualização. Padrão: `0.75`.
+
+Opções úteis:
 
 ```powershell
 python gera_loteca.py --manual --concurso 1253
@@ -105,13 +107,13 @@ python gera_loteca.py --saida outro_arquivo.csv
 
 ## Consulta da API da Caixa
 
-O arquivo `consulta_loteca.py` consulta a programacao da Loteca na API da Caixa:
+O arquivo `consulta_loteca.py` consulta a programação da Loteca na API da Caixa:
 
 ```powershell
 python consulta_loteca.py
 ```
 
-Com `THE_ODDS_API_KEY` configurada, ele tambem tenta exibir as odds 1X2 encontradas.
+Com `THE_ODDS_API_KEY` configurada, ele também tenta exibir as odds 1X2 encontradas.
 
 Esse script depende de acesso a internet e da disponibilidade da API.
 
@@ -119,8 +121,8 @@ Esse script depende de acesso a internet e da disponibilidade da API.
 
 - `lotogen.py`: gerador principal e leitura de CSV/XLSX da Loteca.
 - `gera_loteca.py`: assistente para gerar ou atualizar `loteca_atual.csv`.
-- `consulta_loteca.py`: consulta reutilizavel da programacao da Loteca.
-- `historico_loterias.py`: consulta resultados historicos das modalidades numericas.
+- `consulta_loteca.py`: consulta reutilizável da programação da Loteca.
+- `historico_loterias.py`: consulta resultados históricos das modalidades numéricas.
 - `banco_lotogen.py`: cria e acessa o banco SQLite local.
 - `lotogen.db`: banco local criado automaticamente.
 - `loteca_atual.csv`: arquivo atual de odds e confrontos da Loteca, exportado por compatibilidade.

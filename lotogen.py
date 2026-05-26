@@ -1,4 +1,4 @@
-﻿"""Gerador de bilhetes das loterias numericas da Caixa."""
+﻿"""Gerador de bilhetes das loterias numéricas da Caixa."""
 
 import csv
 import os
@@ -134,7 +134,7 @@ ALIASES = {
     "mega sena": "mega-sena",
     "mega-sena": "mega-sena",
     "lotofacil": "lotofacil",
-    "lotofÃ¡cil": "lotofacil",
+    "lotofácil": "lotofacil",
     "quina": "quina",
     "lotomania": "lotomania",
     "timemania": "timemania",
@@ -146,9 +146,9 @@ ALIASES = {
     "super sete": "super-sete",
     "super-sete": "super-sete",
     "+milionaria": "mais-milionaria",
-    "+milionÃ¡ria": "mais-milionaria",
+    "+milionária": "mais-milionaria",
     "mais milionaria": "mais-milionaria",
-    "mais milionÃ¡ria": "mais-milionaria",
+    "mais milionária": "mais-milionaria",
     "mais-milionaria": "mais-milionaria",
     "loteca": "loteca",
 }
@@ -157,7 +157,7 @@ COLUNAS_LOTECA = ("1", "X", "2")
 
 
 def normaliza_nome(nome):
-    """Remove diferencas simples de acento, maiusculas e espacos duplicados."""
+    """Remove diferenças simples de acento, maiúsculas e espaços duplicados."""
     texto = normalize("NFKD", nome).encode("ascii", "ignore").decode("ascii")
     return " ".join(texto.lower().strip().split())
 
@@ -168,7 +168,7 @@ def nome_modalidade(nome):
 
     if modalidade is None:
         opcoes = ", ".join(sorted(set(ALIASES.values())))
-        raise ValueError(f"Modalidade invalida. Opcoes: {opcoes}")
+        raise ValueError(f"Modalidade inválida. Opções: {opcoes}")
 
     return modalidade
 
@@ -393,7 +393,7 @@ def gera_bilhete_loteca(jogos, duplos=1, triplos=0, modo="emocao"):
     triplos = valida_quantidade(triplos, 0, 14)
 
     if duplos + triplos > 14:
-        raise ValueError("A soma de duplos e triplos nao pode passar de 14.")
+        raise ValueError("A soma de duplos e triplos não pode passar de 14.")
 
     palpites = []
 
@@ -487,15 +487,15 @@ def le_inteiro(mensagem, minimo=1, maximo=None, padrao=None):
         try:
             valor = int(resposta)
         except ValueError:
-            print("Informe um numero inteiro.")
+            print("Informe um número inteiro.")
             continue
 
         if valor < minimo:
-            print(f"Informe um numero maior ou igual a {minimo}.")
+            print(f"Informe um número maior ou igual a {minimo}.")
             continue
 
         if maximo is not None and valor > maximo:
-            print(f"Informe um numero menor ou igual a {maximo}.")
+            print(f"Informe um número menor ou igual a {maximo}.")
             continue
 
         return valor
@@ -516,7 +516,7 @@ def le_sim_nao(mensagem):
 
 def le_modo_loteca():
     while True:
-        resposta = normaliza_nome(input("Bilhete com razao ou emocao? [0=razao/1=emocao] "))
+        resposta = normaliza_nome(input("Decidir bilhete com razão ou emoção? [0=razão/1=emoção] "))
 
         if resposta in ("0", "r", "razao"):
             return "razao"
@@ -524,13 +524,13 @@ def le_modo_loteca():
         if resposta in ("1", "e", "emocao"):
             return "emocao"
 
-        print("Informe 0/razao ou 1/emocao.")
+        print("Informe 0/razão ou 1/emoção.")
 
 
 def le_estrategia_numerica():
     while True:
         resposta = normaliza_nome(
-            input("Gerar como? [0=aleatorio/1=mais sorteados/2=menos sorteados] ")
+            input("Gerar como? [0=aleatório/1=mais sorteados/2=menos sorteados] ")
         )
 
         if resposta in ("", "0", "a", "aleatorio"):
@@ -546,7 +546,7 @@ def le_estrategia_numerica():
 
 
 def le_quantidade_concursos():
-    return le_inteiro("Consultar quantos concursos historicos? [200, 0=todos] ", 0, padrao=200)
+    return le_inteiro("Consultar quantos concursos históricos? [200, 0=todos] ", 0, padrao=200)
 
 
 def opcoes_modalidades():
@@ -574,11 +574,11 @@ def le_modalidades(opcoes):
             try:
                 indice = int(parte)
             except ValueError:
-                print("Informe os numeros dos jogos, por exemplo: 1 e 2")
+                print("Informe os números dos jogos, por exemplo: 1 e 2")
                 break
 
             if not 0 <= indice < len(opcoes):
-                print(f"Opcao invalida: {indice}.")
+                print(f"Opção inválida: {indice}.")
                 break
 
             modalidade = opcoes[indice]
@@ -597,21 +597,21 @@ def quantidade_aposta(modalidade):
     if regra is None or regra["min"] == regra["max"]:
         return None
 
-    multipla = le_sim_nao("Quer aposta multipla? [S/N] ")
+    multipla = le_sim_nao("Quer aposta múltipla? [S/N] ")
 
     if not multipla:
         return None
 
     minimo = regra["min"]
     maximo = regra["max"]
-    return le_inteiro(f"Quantos numeros por bilhete ({minimo} a {maximo})? ", minimo, maximo)
+    return le_inteiro(f"Quantos números por bilhete ({minimo} a {maximo})? ", minimo, maximo)
 
 
 def jogo_loteca_da_linha(linha, numero):
     try:
         odds = [valor_decimal(linha[indice]) for indice in range(3)]
     except (IndexError, TypeError, ValueError):
-        raise ValueError(f"Linha {numero}: informe odds validas nas colunas A, B e C.")
+        raise ValueError(f"Linha {numero}: informe odds válidas nas colunas A, B e C.")
 
     if any(odd <= 1 for odd in odds):
         raise ValueError(f"Linha {numero}: as odds precisam ser maiores que 1.")
@@ -751,13 +751,13 @@ def solicita_planilha_loteca():
             caminho = os.path.abspath(caminho)
 
         if not os.path.exists(caminho):
-            print("Arquivo nao encontrado.")
+            print("Arquivo não encontrado.")
             continue
 
         try:
             jogos = le_planilha_loteca(caminho)
         except (ValueError, KeyError, zipfile.BadZipFile, ElementTree.ParseError) as erro:
-            print(f"Nao consegui ler a planilha: {erro}")
+            print(f"Não consegui ler a planilha: {erro}")
             continue
 
         if len(jogos) != 14:
@@ -778,7 +778,7 @@ def configura_loteca():
         print("Usando arquivo loteca_atual.csv encontrado na pasta do programa.")
         jogos = le_planilha_loteca(caminho_padrao)
     else:
-        print("Arquivo loteca_atual.csv nao encontrado na pasta do programa.")
+        print("Arquivo loteca_atual.csv não encontrado na pasta do programa.")
         print("A planilha da Loteca deve ter:")
         print("A: odd mandante | B: odd empate | C: odd visitante | D/E: times opcionais")
         print("Use as linhas 2 a 15 para os 14 jogos.")
@@ -793,7 +793,7 @@ def configura_loteca():
 def imprime_menu(opcoes):
     print("LOTOGEN - gerador de bilhetes para as Loterias da Caixa")
     print("Informe para quais jogos deseja gerar bilhetes")
-    print("Separe multiplas opcoes com espaco. Exemplo: X Y Z")
+    print("Separe múltiplas opções com espaço. Exemplo: X Y Z")
     print()
 
     indices = list(range(1, len(opcoes))) + [0]
@@ -847,7 +847,7 @@ def checa_bancos_historicos(escolhidos):
         ultimo_local = cobertura["ultimo_local"] or 0
 
         if percentual is None:
-            texto = f"{cobertura['total_local']} concursos locais; nao consegui comparar com a Caixa"
+            texto = f"{cobertura['total_local']} concursos locais; não consegui comparar com a Caixa"
             if cobertura["total_local"] == 0:
                 defasados.append((modalidade, cobertura))
         else:
@@ -890,7 +890,7 @@ def checa_bancos_historicos(escolhidos):
         try:
             sincronizar_historico(modalidade)
         except Exception as erro:
-            print(f"Nao consegui atualizar historico de {modalidade}: {erro}")
+            print(f"Não consegui atualizar histórico de {modalidade}: {erro}")
 
     if loteca_defasada:
         try:
@@ -899,7 +899,7 @@ def checa_bancos_historicos(escolhidos):
             caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
             atualizar_loteca(saida=caminho_padrao)
         except Exception as erro:
-            print(f"Nao consegui atualizar a Loteca: {erro}")
+            print(f"Não consegui atualizar a Loteca: {erro}")
 
 
 def main():
@@ -938,11 +938,11 @@ def main():
                     concursos_historicos,
                 )
             except Exception as erro:
-                print(f"Nao consegui consultar historico de {modalidade}: {erro}")
-                print("Gerando bilhetes aleatorios.")
+                print(f"Não consegui consultar histórico de {modalidade}: {erro}")
+                print("Gerando bilhetes aleatórios.")
                 bilhetes_historicos = None
             else:
-                print(f"Historico consultado: {consultados} concursos.")
+                print(f"Histórico consultado: {consultados} concursos.")
         else:
             bilhetes_historicos = None
 
