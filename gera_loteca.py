@@ -8,9 +8,7 @@ automaticamente. Odds faltantes sao solicitadas manualmente.
 import argparse
 import csv
 import os
-import shutil
 from dataclasses import dataclass
-from datetime import datetime
 
 from banco_lotogen import concurso_loteca_atual, salvar_loteca
 from consulta_loteca import (
@@ -204,36 +202,6 @@ def concurso_csv(caminho):
         return None
 
 
-def fazer_backup_anterior(caminho):
-    if not os.path.exists(caminho):
-        return None
-
-    pasta = os.path.dirname(os.path.abspath(caminho))
-    nome = os.path.basename(caminho)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = os.path.join(pasta, f"{nome}.{timestamp}.bak")
-    shutil.copy2(caminho, backup)
-    return backup
-
-
-def nome_backup_concurso(caminho, concurso):
-    pasta = os.path.dirname(os.path.abspath(caminho))
-
-    if concurso:
-        nome = f"loteca_{concurso}.csv"
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        nome = f"loteca_{timestamp}.csv"
-
-    return os.path.join(pasta, nome)
-
-
-def fazer_backup_concurso(caminho, concurso):
-    backup = nome_backup_concurso(caminho, concurso)
-    shutil.copy2(caminho, backup)
-    return backup
-
-
 def escrever_csv(jogos, caminho, concurso=None):
     with open(caminho, "w", newline="", encoding="utf-8") as arquivo:
         escritor = csv.writer(arquivo, delimiter=";")
@@ -255,7 +223,7 @@ def escrever_csv(jogos, caminho, concurso=None):
             )
 
 
-def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, sem_backup=False, concurso=None):
+def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, concurso=None):
     caminho_saida = os.path.abspath(saida)
 
     if manual:
@@ -286,19 +254,15 @@ def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, sem_backup=False, concu
     jogos = preencher_odds_manualmente(jogos)
     validar_jogos(jogos)
 
-    backup_anterior = None if sem_backup else fazer_backup_anterior(caminho_saida)
     numero_concurso = numero_concurso or next((jogo.concurso for jogo in jogos if jogo.concurso), None)
     if numero_concurso:
         salvar_loteca(numero_concurso, jogos)
 
     escrever_csv(jogos, caminho_saida, numero_concurso)
-    backup_concurso = fazer_backup_concurso(caminho_saida, numero_concurso)
 
-    if backup_anterior:
-        print(f"Backup anterior criado: {backup_anterior}")
-
+    if numero_concurso:
+        print(f"Banco atualizado: concurso {numero_concurso}")
     print(f"Arquivo atualizado: {caminho_saida}")
-    print(f"Backup do concurso criado: {backup_concurso}")
     return caminho_saida
 
 
@@ -315,14 +279,9 @@ def parse_args():
         help="Ignora fontes/API e solicita os 14 jogos manualmente.",
     )
     parser.add_argument(
-        "--sem-backup",
-        action="store_true",
-        help="Nao cria backup do arquivo anterior antes de sobrescrever.",
-    )
-    parser.add_argument(
         "--concurso",
         type=int,
-        help="Numero do concurso usado no backup em modo manual.",
+        help="Numero do concurso usado em modo manual.",
     )
     return parser.parse_args()
 
@@ -332,7 +291,6 @@ def main():
     atualizar_loteca(
         saida=args.saida,
         manual=args.manual,
-        sem_backup=args.sem_backup,
         concurso=args.concurso,
     )
 

@@ -49,7 +49,7 @@ Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura loc
 
 ## Loteca
 
-Para a Loteca, o programa usa primeiro o banco local. O arquivo `loteca_atual.csv` continua sendo exportado como compatibilidade e backup, com 14 jogos nas linhas 2 a 15:
+Para a Loteca, o programa usa primeiro o banco local. O arquivo `loteca_atual.csv` continua sendo exportado apenas por compatibilidade, com 14 jogos nas linhas 2 a 15:
 
 ```csv
 odd_mandante;odd_empate;odd_visitante;time_mandante;time_visitante
@@ -74,7 +74,7 @@ Voce pode atualizar pelo proprio `lotogen.py` ao escolher Loteca, ou usar o scri
 python gera_loteca.py
 ```
 
-Ele busca os 14 jogos oficiais na API da Caixa, pergunta as odds se necessario, salva no banco local, atualiza `loteca_atual.csv` e cria uma copia `loteca_<numero-do-concurso>.csv`.
+Ele busca os 14 jogos oficiais na API da Caixa, pergunta as odds se necessario, salva no banco local e atualiza `loteca_atual.csv`.
 Se o banco local ou `loteca_atual.csv` ja estiverem no concurso atual, o script nao consulta a The Odds API novamente.
 
 Para tentar preencher as odds automaticamente pela The Odds API, configure a chave antes de rodar:
@@ -101,7 +101,6 @@ Opcoes uteis:
 ```powershell
 python gera_loteca.py --manual --concurso 1253
 python gera_loteca.py --saida outro_arquivo.csv
-python gera_loteca.py --manual --sem-backup
 ```
 
 ## Consulta da API da Caixa
@@ -124,5 +123,4 @@ Esse script depende de acesso a internet e da disponibilidade da API.
 - `historico_loterias.py`: consulta resultados historicos das modalidades numericas.
 - `banco_lotogen.py`: cria e acessa o banco SQLite local.
 - `lotogen.db`: banco local criado automaticamente.
-- `loteca_atual.csv`: arquivo atual de odds e confrontos da Loteca.
-- `loteca_<concurso>.csv`: copia criada a cada atualizacao.
+- `loteca_atual.csv`: arquivo atual de odds e confrontos da Loteca, exportado por compatibilidade.

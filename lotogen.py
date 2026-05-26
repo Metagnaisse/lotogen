@@ -9,7 +9,13 @@ from unicodedata import normalize
 
 from banco_lotogen import concurso_loteca_atual, jogos_loteca
 from consulta_loteca import concurso_atual as concurso_atual_loteca
-from historico_loterias import cobertura_historico, dezenas_por_frequencia, ranking_dezenas_por_frequencia, sincronizar_historico
+from historico_loterias import (
+    cobertura_historico,
+    dezenas_por_frequencia,
+    ranking_dezenas_por_frequencia,
+    ranking_super_sete_por_frequencia,
+    sincronizar_historico,
+)
 
 
 lista_times = [
@@ -119,6 +125,8 @@ MODALIDADES = {
     "timemania": {"min": 10, "max": 10, "inicio": 1, "fim": 80, "extra": lista_times},
     "dupla-sena": {"min": 6, "max": 15, "inicio": 1, "fim": 50},
     "dia-de-sorte": {"min": 7, "max": 15, "inicio": 1, "fim": 31, "extra": lista_meses},
+    "super-sete": {"min": 7, "max": 21, "inicio": 0, "fim": 9},
+    "mais-milionaria": {"min": 6, "max": 6, "inicio": 1, "fim": 50, "trevos": True},
 }
 
 ALIASES = {
@@ -198,6 +206,28 @@ def escolhe_nome(nomes):
     return sample(nomes, 1)[0]
 
 
+def chave_extra_atual(nome):
+    return normaliza_nome(str(nome).replace(" /", "/").replace("/ ", "/"))
+
+
+def filtra_ranking_extra_atual(ranking_extra, opcoes_atuais):
+    atuais_por_chave = {
+        chave_extra_atual(opcao): opcao
+        for opcao in opcoes_atuais
+    }
+    vistos = set()
+    filtrados = []
+
+    for extra in ranking_extra:
+        chave = chave_extra_atual(extra)
+
+        if chave in atuais_por_chave and chave not in vistos:
+            filtrados.append(atuais_por_chave[chave])
+            vistos.add(chave)
+
+    return filtrados
+
+
 def gera_bilhete_comum(modalidade, quantidade=None):
     regra = MODALIDADES[modalidade]
     quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
@@ -237,6 +267,26 @@ def gera_bilhete_historico(modalidade, quantidade, estrategia, concursos=200):
 def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concursos=200):
     regra = MODALIDADES[modalidade]
     quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
+
+    if modalidade == "super-sete":
+        rankings, consultados = ranking_super_sete_por_frequencia(estrategia, concursos)
+        bilhetes = []
+
+        for indice in range(total):
+            colunas = []
+
+            for ranking, cota in zip(rankings, cotas_super_sete(quantidade)):
+                inicio = (indice * cota) % len(ranking)
+                numeros = [
+                    ranking[(inicio + posicao) % len(ranking)]
+                    for posicao in range(cota)
+                ]
+                colunas.append([str(numero) for numero in sorted(numeros)])
+
+            bilhetes.append(colunas)
+
+        return bilhetes, consultados
+
     ranking, ranking_extra, consultados = ranking_dezenas_por_frequencia(
         modalidade,
         estrategia,
@@ -246,6 +296,10 @@ def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concurso
         zero_final=regra.get("zero_final", False),
     )
     bilhetes = []
+    if "extra" in regra:
+        ranking_extra_atual = filtra_ranking_extra_atual(ranking_extra, regra["extra"])
+    else:
+        ranking_extra_atual = []
 
     for indice in range(total):
         inicio = (indice * quantidade) % len(ranking)
@@ -253,12 +307,23 @@ def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concurso
         bilhete = [formata_numero(numero, regra.get("zero_final", False)) for numero in sorted(numeros)]
 
         if "extra" in regra:
-            if ranking_extra:
-                extra = ranking_extra[indice % len(ranking_extra)]
+            if ranking_extra_atual:
+                extra = ranking_extra_atual[indice % len(ranking_extra_atual)]
             else:
                 extra = escolhe_nome(regra["extra"])
 
             bilhete.append(f"{{{extra}}}")
+
+        if regra.get("trevos"):
+            if len(ranking_extra) >= 2:
+                trevos = [
+                    ranking_extra[(indice + posicao) % len(ranking_extra)]
+                    for posicao in range(2)
+                ]
+            else:
+                trevos = sorted(sample(range(1, 7), 2))
+
+            bilhete.extend(f"{{{trevo}}}" for trevo in sorted(trevos, key=int))
 
         bilhetes.append(bilhete)
 
@@ -704,27 +769,7 @@ def solicita_planilha_loteca():
 
 def configura_loteca():
     print()
-    print("A planilha da Loteca deve ter:")
-    print("A: odd mandante | B: odd empate | C: odd visitante | D/E: times opcionais")
-    print("Use as linhas 2 a 15 para os 14 jogos.")
     caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
-
-    print()
-    print("Deseja atualizar a Loteca agora? Os jogos serao buscados na Caixa.")
-    if os.getenv("THE_ODDS_API_KEY"):
-        print("THE_ODDS_API_KEY encontrada: vou tentar preencher as odds automaticamente.")
-    else:
-        print("Dica: as odds podem ser obtidas automaticamente se voce configurar THE_ODDS_API_KEY.")
-
-    if le_sim_nao("Atualizar loteca_atual.csv agora? [S/N] "):
-        try:
-            from gera_loteca import atualizar_loteca
-
-            atualizar_loteca(saida=caminho_padrao)
-        except Exception as erro:
-            print(f"Nao consegui atualizar a Loteca: {erro}")
-            print("Vou tentar usar o arquivo local ou pedir uma planilha.")
-
     jogos = jogos_loteca()
 
     if jogos:
@@ -734,6 +779,9 @@ def configura_loteca():
         jogos = le_planilha_loteca(caminho_padrao)
     else:
         print("Arquivo loteca_atual.csv nao encontrado na pasta do programa.")
+        print("A planilha da Loteca deve ter:")
+        print("A: odd mandante | B: odd empate | C: odd visitante | D/E: times opcionais")
+        print("Use as linhas 2 a 15 para os 14 jogos.")
         jogos = solicita_planilha_loteca()
 
     duplos = le_inteiro("Quantos duplos por bilhete? [1] ", 1, 14, padrao=1)
@@ -755,6 +803,29 @@ def imprime_menu(opcoes):
         print(f"{indice}. {modalidade}")
 
     print()
+
+
+def formata_percentual_cobertura(percentual):
+    if percentual >= 1:
+        return "100%"
+
+    return f"{percentual:.2%}"
+
+
+def banco_historico_defasado(cobertura, limite):
+    percentual = cobertura["percentual"]
+    ultimo_local = cobertura["ultimo_local"] or 0
+    ultimo_remoto = cobertura["ultimo_remoto"] or 0
+    total_local = cobertura["total_local"]
+
+    if percentual is None:
+        return total_local == 0
+
+    return (
+        percentual < limite
+        or total_local < ultimo_remoto
+        or ultimo_local < ultimo_remoto
+    )
 
 
 def checa_bancos_historicos(escolhidos):
@@ -780,12 +851,15 @@ def checa_bancos_historicos(escolhidos):
             if cobertura["total_local"] == 0:
                 defasados.append((modalidade, cobertura))
         else:
+            faltantes = max(0, cobertura["ultimo_remoto"] - cobertura["total_local"])
+            detalhe_faltantes = f"; faltam {faltantes}" if faltantes else ""
             texto = (
                 f"{cobertura['total_local']} de {cobertura['ultimo_remoto']} concursos "
-                f"({percentual:.0%}); ultimo local: {ultimo_local}"
+                f"({formata_percentual_cobertura(percentual)}); ultimo local: {ultimo_local}"
+                f"{detalhe_faltantes}"
             )
 
-            if percentual < limite:
+            if banco_historico_defasado(cobertura, limite):
                 defasados.append((modalidade, cobertura))
 
         print(f"- {modalidade}: {texto}")

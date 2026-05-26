@@ -142,9 +142,7 @@ def frequencias_historicas(modalidade, quantidade_concursos=200, zero_final=Fals
             except ValueError:
                 continue
 
-        extra = linha["extra"]
-
-        if extra:
+        for extra in itens_extra_resultado(linha["extra"]):
             frequencias_extra[normaliza_extra(extra)] += 1
 
         consultados += 1
@@ -154,6 +152,42 @@ def frequencias_historicas(modalidade, quantidade_concursos=200, zero_final=Fals
 
     salvar_frequencias(modalidade, frequencias, frequencias_extra, concurso_inicial, fim_banco)
     return frequencias, frequencias_extra, consultados
+
+
+def frequencias_super_sete_por_coluna(quantidade_concursos=200):
+    modalidade = "super-sete"
+    sincronizar_historico(modalidade)
+    inicio_banco, fim_banco = intervalo_concursos_numericos(modalidade)
+
+    if fim_banco is None:
+        raise RuntimeError("Nao ha historico local para esta modalidade.")
+
+    if quantidade_concursos and quantidade_concursos > 0:
+        concurso_inicial = max(inicio_banco, fim_banco - quantidade_concursos + 1)
+    else:
+        concurso_inicial = inicio_banco
+
+    frequencias = [Counter() for _indice in range(7)]
+    consultados = 0
+
+    for linha in resultados_numericos(modalidade, concurso_inicial):
+        dezenas = json.loads(linha["dezenas_json"])
+
+        if len(dezenas) != 7:
+            continue
+
+        for coluna, dezena in enumerate(dezenas):
+            try:
+                frequencias[coluna][normaliza_dezena(dezena)] += 1
+            except ValueError:
+                continue
+
+        consultados += 1
+
+    if not any(frequencias):
+        raise RuntimeError("Nao encontrei dezenas no historico consultado.")
+
+    return frequencias, consultados
 
 
 def sincronizar_historico(modalidade):
@@ -168,15 +202,23 @@ def sincronizar_historico(modalidade):
         print(f"Nao consegui verificar novos concursos na Caixa. Usando historico local ate {ultimo_local}.")
         return
 
-    inicio = 1 if ultimo_local is None else ultimo_local + 1
+    concursos_salvos = {
+        int(linha["concurso"])
+        for linha in resultados_numericos(modalidade)
+    }
+    concursos_pendentes = [
+        concurso
+        for concurso in range(1, ultimo_remoto + 1)
+        if concurso not in concursos_salvos
+    ]
 
-    if inicio > ultimo_remoto:
+    if not concursos_pendentes:
         return
 
-    print(f"Atualizando historico de {modalidade}: concursos {inicio} a {ultimo_remoto}.")
-    total = ultimo_remoto - inicio + 1
+    print(f"Atualizando historico de {modalidade}: {len(concursos_pendentes)} concursos pendentes.")
+    total = len(concursos_pendentes)
 
-    for posicao, concurso in enumerate(range(inicio, ultimo_remoto + 1), start=1):
+    for posicao, concurso in enumerate(concursos_pendentes, start=1):
         try:
             dados = resultado_concurso(modalidade, concurso)
         except requests.RequestException:
@@ -227,7 +269,27 @@ def cobertura_historico(modalidade):
 
 
 def extra_resultado(dados):
+    trevos = dados.get("trevosSorteados")
+
+    if trevos:
+        return json.dumps([str(trevo) for trevo in trevos], ensure_ascii=False)
+
     return dados.get("nomeTimeCoracaoMesSorte")
+
+
+def itens_extra_resultado(valor):
+    if not valor:
+        return []
+
+    try:
+        dados = json.loads(valor)
+    except (TypeError, json.JSONDecodeError):
+        return [valor]
+
+    if isinstance(dados, list):
+        return [str(item) for item in dados]
+
+    return [valor]
 
 
 def normaliza_extra(valor):
@@ -267,6 +329,28 @@ def ranking_extra_por_frequencia(frequencias, estrategia):
             reverse=reverso,
         )
     ]
+
+
+def ranking_super_sete_por_frequencia(estrategia, quantidade_concursos=200):
+    frequencias, consultados = frequencias_super_sete_por_coluna(
+        quantidade_concursos=quantidade_concursos,
+    )
+    reverso = estrategia == "mais"
+    rankings = []
+
+    for frequencia_coluna in frequencias:
+        rankings.append(
+            sorted(
+                range(10),
+                key=lambda numero: (
+                    frequencia_coluna.get(numero, 0),
+                    -numero if reverso else numero,
+                ),
+                reverse=reverso,
+            )
+        )
+
+    return rankings, consultados
 
 
 def dezenas_por_frequencia(
