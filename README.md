@@ -6,7 +6,7 @@ Gerador interativo de bilhetes para loterias numéricas da Caixa, com suporte a 
 
 - Gera bilhetes para Mega-Sena, Lotofácil, Quina, Lotomania, Timemania, Dupla-Sena, Dia de Sorte, Super Sete e +Milionária.
 - Gera palpites da Loteca a partir de odds de mandante, empate e visitante.
-- Lê dados da Loteca em `loteca_atual.csv` ou em uma planilha `.xlsx`.
+- Lê dados da Loteca em `loteca_atual.csv` ou em uma planilha `.xlsx`/`.ods`.
 - Inclui um script auxiliar para atualizar o `loteca_atual.csv`.
 - Inclui uma consulta da programação da Loteca na API pública da Caixa.
 - Pode buscar odds 1X2 automaticamente pela The Odds API.
@@ -64,7 +64,7 @@ odd_mandante;odd_empate;odd_visitante;time_mandante;time_visitante
 
 As três primeiras colunas são obrigatórias e devem conter odds maiores que 1. As colunas dos times são opcionais, mas ajudam a imprimir os palpites com nomes dos confrontos.
 
-Também é possível usar uma planilha `.xlsx` com as mesmas colunas:
+Também é possível usar uma planilha `.xlsx` ou `.ods` com as mesmas colunas:
 
 - Coluna A: odd do mandante
 - Coluna B: odd do empate

@@ -832,6 +832,99 @@ def le_loteca_xlsx(caminho):
     return jogos
 
 
+def texto_celula_ods(celula):
+    ns = {
+        "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
+        "text": "urn:oasis:names:tc:opendocument:xmlns:text:1.0",
+    }
+
+    valor = (
+        celula.attrib.get(f"{{{ns['office']}}}value")
+        or celula.attrib.get(f"{{{ns['office']}}}string-value")
+    )
+
+    if valor is not None:
+        return valor
+
+    partes = [
+        "".join(paragrafo.itertext())
+        for paragrafo in celula.findall("text:p", ns)
+    ]
+    return "\n".join(parte for parte in partes if parte)
+
+
+def repeticoes_ods(elemento, atributo):
+    try:
+        return int(elemento.attrib.get(atributo, "1"))
+    except ValueError:
+        return 1
+
+
+def valores_linha_ods(linha, limite_colunas=5):
+    ns_table = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    valores = []
+
+    for celula in linha:
+        celula_normal = celula.tag == f"{{{ns_table}}}table-cell"
+        celula_coberta = celula.tag == f"{{{ns_table}}}covered-table-cell"
+
+        if not (celula_normal or celula_coberta):
+            continue
+
+        repeticoes = repeticoes_ods(celula, f"{{{ns_table}}}number-columns-repeated")
+        valor = texto_celula_ods(celula) if celula_normal else ""
+
+        for _indice in range(repeticoes):
+            if len(valores) >= limite_colunas:
+                return valores
+
+            valores.append(valor)
+
+    return valores
+
+
+def le_loteca_ods(caminho):
+    jogos = []
+    ns = {
+        "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
+        "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
+    }
+    linhas_por_numero = {}
+
+    with zipfile.ZipFile(caminho) as arquivo:
+        conteudo = ElementTree.fromstring(arquivo.read("content.xml"))
+        planilha = conteudo.find(".//table:table", ns)
+
+        if planilha is None:
+            raise ValueError("Planilha ODS sem tabela.")
+
+        numero_linha = 1
+
+        for linha in planilha.findall("table:table-row", ns):
+            repeticoes = repeticoes_ods(
+                linha,
+                f"{{{ns['table']}}}number-rows-repeated",
+            )
+            valores = valores_linha_ods(linha)
+
+            for _indice in range(repeticoes):
+                if 2 <= numero_linha <= 15:
+                    linhas_por_numero[numero_linha] = valores
+
+                numero_linha += 1
+
+                if numero_linha > 15:
+                    break
+
+            if numero_linha > 15:
+                break
+
+    for numero in range(2, 16):
+        jogos.append(jogo_loteca_da_linha(linhas_por_numero.get(numero, []), numero))
+
+    return jogos
+
+
 def le_planilha_loteca(caminho):
     extensao = os.path.splitext(caminho)[1].lower()
 
@@ -841,12 +934,15 @@ def le_planilha_loteca(caminho):
     if extensao == ".xlsx":
         return le_loteca_xlsx(caminho)
 
-    raise ValueError("Use uma planilha .xlsx ou .csv.")
+    if extensao == ".ods":
+        return le_loteca_ods(caminho)
+
+    raise ValueError("Use uma planilha .csv, .xlsx ou .ods.")
 
 
 def solicita_planilha_loteca():
     while True:
-        caminho = input("Caminho da planilha da Loteca (.xlsx ou .csv): ").strip().strip('"')
+        caminho = input("Caminho da planilha da Loteca (.csv, .xlsx ou .ods): ").strip().strip('"')
 
         if not caminho:
             print("Informe o caminho da planilha.")
