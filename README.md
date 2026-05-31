@@ -141,7 +141,7 @@ Ao executar `python favoritos.py` sem subcomando, ele abre um menu interativo.
 
 ## Estrutura
 
-- `lotogen.py`: gerador principal e leitura de CSV/XLSX da Loteca.
+- `lotogen.py`: gerador principal e leitura de CSV/ODS/XLSX da Loteca.
 - `gera_loteca.py`: assistente para gerar ou atualizar `loteca_atual.csv`.
 - `consulta_loteca.py`: consulta reutilizável da programação da Loteca.
 - `favoritos.py`: gerenciador de bilhetes favoritos.
