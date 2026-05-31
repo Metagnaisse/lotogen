@@ -266,6 +266,37 @@ def concurso_loteca_atual():
         return int(linha["concurso"]) if linha else None
 
 
+def concursos_loteca():
+    with conectar() as conexao:
+        linhas = list(
+            conexao.execute(
+                """
+                SELECT concurso, data_proximo_concurso, atualizado_em
+                FROM loteca_concursos
+                ORDER BY concurso DESC
+                """
+            )
+        )
+
+    return [
+        {
+            "concurso": int(linha["concurso"]),
+            "data_proximo_concurso": linha["data_proximo_concurso"],
+            "atualizado_em": linha["atualizado_em"],
+        }
+        for linha in linhas
+    ]
+
+
+def concurso_loteca_existe(concurso):
+    with conectar() as conexao:
+        linha = conexao.execute(
+            "SELECT 1 FROM loteca_concursos WHERE concurso = ?",
+            (int(concurso),),
+        ).fetchone()
+        return linha is not None
+
+
 def jogos_loteca(concurso=None):
     if concurso is None:
         concurso = concurso_loteca_atual()
@@ -323,7 +354,7 @@ def salvar_favorito(modalidade, dezenas, extra=None, nome=None):
             (
                 nome,
                 modalidade,
-                json.dumps([str(dezena) for dezena in dezenas], ensure_ascii=False),
+                json.dumps(dezenas, ensure_ascii=False),
                 extra,
                 agora_iso(),
             ),

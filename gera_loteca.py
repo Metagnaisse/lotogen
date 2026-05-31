@@ -10,11 +10,13 @@ import csv
 import os
 from dataclasses import dataclass
 
-from banco_lotogen import concurso_loteca_atual, salvar_loteca
+from banco_lotogen import concurso_loteca_existe, jogos_loteca as jogos_loteca_banco, salvar_loteca
 from consulta_loteca import (
+    buscar_programacao_loteca,
     completar_odds_the_odds_api,
-    concurso_atual,
+    concurso_por_numero,
     jogos_do_concurso,
+    numero_concurso as numero_concurso_caixa,
     the_odds_api_key,
 )
 
@@ -122,9 +124,51 @@ def jogos_oficiais_do_concurso(concurso):
     ]
 
 
+def descricao_concurso(concurso):
+    numero = numero_concurso_caixa(concurso) or "?"
+    data = concurso.get("dataProximoConcurso") or "sem data"
+    total_jogos = len(jogos_do_concurso(concurso))
+    return f"{numero} - {data} - {total_jogos} jogos"
+
+
+def escolher_concurso_caixa(numero=None):
+    if numero:
+        return concurso_por_numero(numero)
+
+    concursos = buscar_programacao_loteca()
+
+    if not concursos:
+        raise RuntimeError("A API da Caixa nao retornou programacao da Loteca.")
+
+    if len(concursos) == 1:
+        return concursos[0]
+
+    print("Concursos da Loteca disponiveis na Caixa:")
+
+    for indice, concurso in enumerate(concursos, start=1):
+        print(f"{indice}. {descricao_concurso(concurso)}")
+
+    while True:
+        resposta = input("Qual concurso deseja atualizar? [ENTER para o primeiro] ").strip()
+
+        if not resposta:
+            return concursos[0]
+
+        try:
+            indice = int(resposta)
+        except ValueError:
+            print("Informe o numero da opcao.")
+            continue
+
+        if 1 <= indice <= len(concursos):
+            return concursos[indice - 1]
+
+        print("Opcao invalida.")
+
+
 def descobrir_jogos_oficiais():
     try:
-        concurso = concurso_atual()
+        concurso = escolher_concurso_caixa()
     except Exception as erro:
         print(f"Nao consegui buscar os jogos oficiais: {erro}")
         return []
@@ -225,27 +269,50 @@ def escrever_csv(jogos, caminho, concurso=None):
             )
 
 
+def jogos_salvos_do_banco(concurso):
+    return [
+        JogoLoteca(
+            jogo.get("mandante"),
+            jogo.get("visitante"),
+            odd_mandante=jogo["odds"][0],
+            odd_empate=jogo["odds"][1],
+            odd_visitante=jogo["odds"][2],
+            competicao=jogo.get("competicao"),
+        )
+        for jogo in jogos_loteca_banco(concurso)
+    ]
+
+
 def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, concurso=None):
     caminho_saida = os.path.abspath(saida)
 
     if manual:
         jogos = []
         numero_concurso = concurso
+        data_proximo_concurso = None
     else:
         try:
-            concurso_atual_caixa = concurso_atual()
+            concurso_atual_caixa = escolher_concurso_caixa(concurso)
         except Exception as erro:
             print(f"Nao consegui buscar os jogos oficiais: {erro}")
             concurso_atual_caixa = None
 
-        numero_concurso = concurso_atual_caixa.get("nuConcurso") if concurso_atual_caixa else concurso
+        numero_concurso = numero_concurso_caixa(concurso_atual_caixa) if concurso_atual_caixa else concurso
+        data_proximo_concurso = (
+            concurso_atual_caixa.get("dataProximoConcurso") if concurso_atual_caixa else None
+        )
 
-        if numero_concurso and (
-            concurso_csv(caminho_saida) == int(numero_concurso)
-            or concurso_loteca_atual() == int(numero_concurso)
-        ):
-            print(f"A Loteca local ja esta atualizada para o concurso {numero_concurso}.")
-            return caminho_saida
+        if numero_concurso and concurso_loteca_existe(numero_concurso):
+            if concurso_csv(caminho_saida) == int(numero_concurso):
+                print(f"A Loteca local ja esta atualizada para o concurso {numero_concurso}.")
+                return caminho_saida
+
+            jogos_salvos = jogos_salvos_do_banco(numero_concurso)
+            if jogos_salvos:
+                escrever_csv(jogos_salvos, caminho_saida, numero_concurso)
+                print(f"Banco ja tinha o concurso {numero_concurso}.")
+                print(f"Arquivo atualizado: {caminho_saida}")
+                return caminho_saida
 
         jogos = jogos_oficiais_do_concurso(concurso_atual_caixa) if concurso_atual_caixa else []
 
@@ -258,7 +325,7 @@ def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, concurso=None):
 
     numero_concurso = numero_concurso or next((jogo.concurso for jogo in jogos if jogo.concurso), None)
     if numero_concurso:
-        salvar_loteca(numero_concurso, jogos)
+        salvar_loteca(numero_concurso, jogos, data_proximo_concurso=data_proximo_concurso)
 
     escrever_csv(jogos, caminho_saida, numero_concurso)
 
@@ -283,7 +350,7 @@ def parse_args():
     parser.add_argument(
         "--concurso",
         type=int,
-        help="Numero do concurso usado em modo manual.",
+        help="Numero do concurso da Loteca a atualizar ou usar em modo manual.",
     )
     return parser.parse_args()
 

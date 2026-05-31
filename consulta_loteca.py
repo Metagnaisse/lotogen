@@ -12,6 +12,7 @@ CAIXA_URL = "https://servicebus2.caixa.gov.br/portaldeloterias/api/loteca/progra
 THE_ODDS_API_SPORTS_URL = "https://api.the-odds-api.com/v4/sports"
 THE_ODDS_API_ODDS_URL = "https://api.the-odds-api.com/v4/sports/{sport}/odds"
 THE_ODDS_API_DEFAULT_SPORTS = (
+    "soccer_fifa_world_cup",
     "soccer_brazil_campeonato",
     "soccer_brazil_serie_b",
     "soccer_epl",
@@ -30,6 +31,88 @@ APELIDOS_TIMES = {
     "SAO PAULO FC": "SAO PAULO",
     "SPORT RECIFE": "SPORT",
     "VASCO DA GAMA": "VASCO",
+    "AFRICA DO SUL": "SOUTH AFRICA",
+    "ALEMANHA": "GERMANY",
+    "ARABIA SAUDITA": "SAUDI ARABIA",
+    "ARGELIA": "ALGERIA",
+    "ARGENTINA": "ARGENTINA",
+    "AUSTRALIA": "AUSTRALIA",
+    "AUSTRIA": "AUSTRIA",
+    "BELGICA": "BELGIUM",
+    "BOLIVIA": "BOLIVIA",
+    "BRASIL": "BRAZIL",
+    "BULGARIA": "BULGARIA",
+    "CAMAROES": "CAMEROON",
+    "CABO VERDE": "CAPE VERDE",
+    "CANADA": "CANADA",
+    "CATAR": "QATAR",
+    "CAZAQUISTAO": "KAZAKHSTAN",
+    "CHILE": "CHILE",
+    "CHINA": "CHINA",
+    "COLOMBIA": "COLOMBIA",
+    "COREIA": "SOUTH KOREA",
+    "COREIA DO SUL": "SOUTH KOREA",
+    "COREIA SUL": "SOUTH KOREA",
+    "COREIA REPUBLICA": "SOUTH KOREA",
+    "CURACAO": "CURACAO",
+    "COSTA DO MARFIM": "IVORY COAST",
+    "COSTA MARFIM": "IVORY COAST",
+    "COTE D IVOIRE": "IVORY COAST",
+    "COSTA RICA": "COSTA RICA",
+    "CROACIA": "CROATIA",
+    "DINAMARCA": "DENMARK",
+    "EGITO": "EGYPT",
+    "EQUADOR": "ECUADOR",
+    "ESCOCIA": "SCOTLAND",
+    "ESLOVAQUIA": "SLOVAKIA",
+    "ESLOVENIA": "SLOVENIA",
+    "ESPANHA": "SPAIN",
+    "ESTADOS UNIDOS": "USA",
+    "EUA": "USA",
+    "FINLANDIA": "FINLAND",
+    "FRANCA": "FRANCE",
+    "GALES": "WALES",
+    "GANA": "GHANA",
+    "GRECIA": "GREECE",
+    "HAITI": "HAITI",
+    "HOLANDA": "NETHERLANDS",
+    "HONDURAS": "HONDURAS",
+    "HUNGRIA": "HUNGARY",
+    "INGLATERRA": "ENGLAND",
+    "IRA": "IRAN",
+    "IRAQUE": "IRAQ",
+    "IRLANDA": "IRELAND",
+    "IRLANDA DO NORTE": "NORTHERN IRELAND",
+    "IRLANDA NORTE": "NORTHERN IRELAND",
+    "ISLANDIA": "ICELAND",
+    "ISRAEL": "ISRAEL",
+    "ITALIA": "ITALY",
+    "JAMAICA": "JAMAICA",
+    "JAPAO": "JAPAN",
+    "MARROCOS": "MOROCCO",
+    "MEXICO": "MEXICO",
+    "NIGERIA": "NIGERIA",
+    "NORUEGA": "NORWAY",
+    "NOVA ZELANDIA": "NEW ZEALAND",
+    "PANAMA": "PANAMA",
+    "PARAGUAI": "PARAGUAY",
+    "PAIS DE GALES": "WALES",
+    "PAISES BAIXOS": "NETHERLANDS",
+    "PERU": "PERU",
+    "POLONIA": "POLAND",
+    "PORTUGAL": "PORTUGAL",
+    "REPUBLICA TCHECA": "CZECH REPUBLIC",
+    "ROMENIA": "ROMANIA",
+    "RUSSIA": "RUSSIA",
+    "SENEGAL": "SENEGAL",
+    "SERVIA": "SERBIA",
+    "SUECIA": "SWEDEN",
+    "SUICA": "SWITZERLAND",
+    "TUNISIA": "TUNISIA",
+    "TURQUIA": "TURKEY",
+    "UCRANIA": "UKRAINE",
+    "URUGUAI": "URUGUAY",
+    "VENEZUELA": "VENEZUELA",
 }
 
 PALAVRAS_IGNORADAS = {
@@ -120,6 +203,23 @@ def concurso_atual():
         raise RuntimeError("A API da Caixa nao retornou programacao da Loteca.")
 
     return concursos[0]
+
+
+def numero_concurso(concurso):
+    try:
+        return int(concurso.get("nuConcurso"))
+    except (TypeError, ValueError):
+        return None
+
+
+def concurso_por_numero(numero):
+    numero = int(numero)
+
+    for concurso in buscar_programacao_loteca():
+        if numero_concurso(concurso) == numero:
+            return concurso
+
+    raise RuntimeError(f"Concurso {numero} nao encontrado na programacao da Loteca.")
 
 
 def data_iso(valor):

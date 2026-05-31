@@ -7,8 +7,8 @@ from xml.etree import ElementTree
 from random import choices, sample
 from unicodedata import normalize
 
-from banco_lotogen import concurso_loteca_atual, jogos_loteca
-from consulta_loteca import concurso_atual as concurso_atual_loteca
+from banco_lotogen import concurso_loteca_atual, concursos_loteca, jogos_loteca
+from consulta_loteca import buscar_programacao_loteca, numero_concurso as numero_concurso_loteca
 from historico_loterias import (
     cobertura_historico,
     dezenas_por_frequencia,
@@ -481,7 +481,14 @@ def valores_favorito(modalidade, bilhete):
     modalidade = nome_modalidade(modalidade)
 
     if modalidade == "loteca":
-        return None
+        return [
+            {
+                "colunas": jogo.get("colunas", []),
+                "mandante": jogo.get("mandante"),
+                "visitante": jogo.get("visitante"),
+            }
+            for jogo in bilhete
+        ]
 
     if modalidade == "super-sete":
         return bilhete
@@ -865,13 +872,49 @@ def solicita_planilha_loteca():
         return jogos
 
 
+def escolhe_concurso_loteca_local():
+    concursos = concursos_loteca()
+
+    if not concursos:
+        return None, []
+
+    if len(concursos) == 1:
+        concurso = concursos[0]["concurso"]
+        return concurso, jogos_loteca(concurso)
+
+    print("Concursos da Loteca salvos no banco local:")
+
+    for indice, item in enumerate(concursos, start=1):
+        data = item["data_proximo_concurso"] or "sem data"
+        print(f"{indice}. concurso {item['concurso']} - {data}")
+
+    while True:
+        resposta = input("Qual concurso deseja usar? [ENTER para o mais recente] ").strip()
+
+        if not resposta:
+            concurso = concursos[0]["concurso"]
+            return concurso, jogos_loteca(concurso)
+
+        try:
+            indice = int(resposta)
+        except ValueError:
+            print("Informe o número da opção.")
+            continue
+
+        if 1 <= indice <= len(concursos):
+            concurso = concursos[indice - 1]["concurso"]
+            return concurso, jogos_loteca(concurso)
+
+        print("Opção inválida.")
+
+
 def configura_loteca():
     print()
     caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
-    jogos = jogos_loteca()
+    concurso, jogos = escolhe_concurso_loteca_local()
 
     if jogos:
-        print("Usando Loteca salva no banco local.")
+        print(f"Usando Loteca salva no banco local: concurso {concurso}.")
     elif os.path.exists(caminho_padrao):
         print("Usando arquivo loteca_atual.csv encontrado na pasta do programa.")
         jogos = le_planilha_loteca(caminho_padrao)
@@ -936,6 +979,7 @@ def checa_bancos_historicos(escolhidos):
     limite = float(os.getenv("LOTOGEN_COBERTURA_MINIMA", "0.75"))
     defasados = []
     loteca_defasada = False
+    faltantes_loteca = []
 
     print("Verificando bancos locais...")
 
@@ -963,19 +1007,30 @@ def checa_bancos_historicos(escolhidos):
         print(f"- {modalidade}: {texto}")
 
     if "loteca" in escolhidos:
+        concursos_locais = {item["concurso"] for item in concursos_loteca()}
         concurso_local = concurso_loteca_atual()
 
         try:
-            concurso_remoto = concurso_atual_loteca().get("nuConcurso")
+            concursos_remotos = [
+                numero
+                for numero in (numero_concurso_loteca(concurso) for concurso in buscar_programacao_loteca())
+                if numero is not None
+            ]
         except Exception as erro:
-            concurso_remoto = None
             estado_local = "presente" if concurso_local else "ausente"
             print(f"- loteca: concurso atual desconhecido; local: {estado_local} ({erro})")
         else:
-            estado_local = "presente" if concurso_local and int(concurso_local) == int(concurso_remoto) else "ausente"
-            print(f"- loteca: concurso atual {concurso_remoto}; local: {estado_local}")
+            faltantes_loteca = [numero for numero in concursos_remotos if numero not in concursos_locais]
+            lista_remotos = ", ".join(str(numero) for numero in concursos_remotos) or "nenhum"
+            lista_locais = ", ".join(str(numero) for numero in sorted(concursos_locais, reverse=True)) or "nenhum"
+            estado_local = (
+                "presente"
+                if not faltantes_loteca
+                else f"faltando {', '.join(str(numero) for numero in faltantes_loteca)}"
+            )
+            print(f"- loteca: concursos atuais {lista_remotos}; local: {lista_locais}; {estado_local}")
 
-            if not concurso_local or int(concurso_local) < int(concurso_remoto):
+            if faltantes_loteca:
                 loteca_defasada = True
 
     if not defasados and not loteca_defasada:
@@ -995,7 +1050,8 @@ def checa_bancos_historicos(escolhidos):
             from gera_loteca import atualizar_loteca
 
             caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
-            atualizar_loteca(saida=caminho_padrao)
+            for concurso in faltantes_loteca:
+                atualizar_loteca(saida=caminho_padrao, concurso=concurso)
         except Exception as erro:
             print(f"Não consegui atualizar a Loteca: {erro}")
 

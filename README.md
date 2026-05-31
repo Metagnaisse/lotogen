@@ -49,10 +49,13 @@ Ao escolher Loteca, o programa pergunta se você deseja atualizar `loteca_atual.
 Nas modalidades numéricas, o programa também permite escolher entre geração aleatória, números mais sorteados ou números menos sorteados. Para as opções históricas, ele sincroniza os resultados da Caixa com o banco local; por padrão usa todos os concursos disponíveis, mas você pode informar um número para limitar a consulta. Se não conseguir atualizar pela internet, usa o histórico local disponível.
 Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura local de cada banco escolhido. Para modalidades numéricas, oferece atualização quando o banco histórico está vazio ou com menos de 75% dos concursos disponíveis. Se a Loteca for escolhida, também compara o concurso local com o concurso atual da Caixa e oferece atualizar quando estiver defasada.
 Depois de imprimir os bilhetes gerados, o programa pergunta se você deseja salvar algum deles nos favoritos.
+Bilhetes da Loteca tambem podem ser salvos; nesse caso o favorito guarda os 14 jogos com as colunas escolhidas.
 
 ## Loteca
 
 Para a Loteca, o programa usa primeiro o banco local. O arquivo `loteca_atual.csv` continua sendo exportado apenas por compatibilidade, com 14 jogos nas linhas 2 a 15:
+
+Quando houver mais de um concurso da Loteca salvo no banco local, o gerador lista os concursos e pergunta qual deles deve ser usado. Isso cobre periodos com concursos concomitantes, como uma edicao normal e uma edicao especial da Copa.
 
 ```csv
 odd_mandante;odd_empate;odd_visitante;time_mandante;time_visitante
@@ -78,7 +81,8 @@ python gera_loteca.py
 ```
 
 Ele busca os 14 jogos oficiais na API da Caixa, pergunta as odds se necessário, salva no banco local e atualiza `loteca_atual.csv`.
-Se o banco local ou `loteca_atual.csv` já estiverem no concurso atual, o script não consulta a The Odds API novamente.
+Se a Caixa retornar mais de um concurso disponivel, o script pergunta qual deles deve atualizar. Tambem e possivel informar o concurso diretamente com `--concurso`.
+Se o banco local já tiver esse concurso, o script não consulta a The Odds API novamente; ele apenas atualiza o CSV de compatibilidade quando necessário.
 
 Para tentar preencher as odds automaticamente pela The Odds API, configure a chave antes de rodar:
 
@@ -104,6 +108,7 @@ Variáveis opcionais:
 Opções úteis:
 
 ```powershell
+python gera_loteca.py --concurso 1255
 python gera_loteca.py --manual --concurso 1253
 python gera_loteca.py --saida outro_arquivo.csv
 ```
@@ -127,6 +132,7 @@ O arquivo `favoritos.py` permite cadastrar, listar e remover bilhetes favoritos 
 ```powershell
 python favoritos.py adicionar timemania 04 06 08 09 10 27 46 75 76 79 Internacional/RS
 python favoritos.py adicionar mega 03 04 09 12 23 51
+python favoritos.py adicionar loteca 1 X 2 1/X 1 2 X 1 X 2 1 1/X X 2
 python favoritos.py listar
 python favoritos.py remover 1
 ```

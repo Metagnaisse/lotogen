@@ -5,7 +5,7 @@ import json
 from unicodedata import normalize
 
 from banco_lotogen import listar_favoritos, remover_favorito, salvar_favorito
-from lotogen import MODALIDADES, formata_numero, lista_times, nome_modalidade, opcoes_modalidades
+from lotogen import COLUNAS_LOTECA, MODALIDADES, formata_numero, lista_times, nome_modalidade, opcoes_modalidades
 
 
 def normaliza_texto(texto):
@@ -134,8 +134,63 @@ def valida_extra(modalidade, extra):
     return time
 
 
+def normaliza_colunas_loteca(colunas):
+    if isinstance(colunas, str):
+        colunas = colunas.replace(",", "/").replace("-", "/").split("/")
+
+    ordem = {coluna: indice for indice, coluna in enumerate(COLUNAS_LOTECA)}
+    normalizadas = []
+
+    for coluna in colunas:
+        coluna = str(coluna).strip().upper()
+
+        if coluna not in COLUNAS_LOTECA:
+            raise ValueError(f"Coluna inválida da Loteca: {coluna}")
+
+        if coluna not in normalizadas:
+            normalizadas.append(coluna)
+
+    if not normalizadas:
+        raise ValueError("Cada jogo da Loteca precisa de ao menos uma coluna.")
+
+    return sorted(normalizadas, key=ordem.get)
+
+
+def valida_loteca(valores):
+    if len(valores) != 14:
+        raise ValueError("Loteca precisa de 14 jogos.")
+
+    jogos = []
+
+    for indice, valor in enumerate(valores, start=1):
+        if isinstance(valor, dict):
+            colunas = normaliza_colunas_loteca(valor.get("colunas", []))
+            mandante = valor.get("mandante")
+            visitante = valor.get("visitante")
+        else:
+            colunas = normaliza_colunas_loteca(valor)
+            mandante = None
+            visitante = None
+
+        jogos.append(
+            {
+                "jogo": indice,
+                "colunas": colunas,
+                "mandante": mandante,
+                "visitante": visitante,
+            }
+        )
+
+    return jogos
+
+
 def cria_favorito(modalidade, valores, nome=None):
     modalidade = nome_modalidade(modalidade)
+
+    if modalidade == "loteca":
+        jogos = valida_loteca(valores)
+        favorito_id = salvar_favorito(modalidade, jogos, nome=nome)
+        return favorito_id, modalidade, jogos, None
 
     if modalidade not in MODALIDADES:
         raise ValueError("Esta modalidade ainda não é suportada nos favoritos.")
@@ -154,6 +209,25 @@ def formata_favorito(favorito):
     if favorito["nome"]:
         cabecalho += f" - {favorito['nome']}"
 
+    if favorito["modalidade"] == "loteca":
+        linhas = [f"{cabecalho}:"]
+
+        for indice, jogo in enumerate(dezenas, start=1):
+            if isinstance(jogo, dict):
+                numero = int(jogo.get("jogo") or indice)
+                colunas = "/".join(jogo.get("colunas", []))
+                mandante = jogo.get("mandante")
+                visitante = jogo.get("visitante")
+
+                if mandante and visitante:
+                    linhas.append(f"{numero:02d}: {mandante} x {visitante} -> {colunas}")
+                else:
+                    linhas.append(f"{numero:02d}: {colunas}")
+            else:
+                linhas.append(f"{indice:02d}: {jogo}")
+
+        return "\n".join(linhas)
+
     partes = [f"{cabecalho}:", " ".join(dezenas)]
 
     if favorito["extra"]:
@@ -162,18 +236,25 @@ def formata_favorito(favorito):
     return " ".join(partes)
 
 
+def texto_favorito_salvo(favorito_id, modalidade, dezenas, extra=None):
+    if modalidade == "loteca":
+        return f"Favorito {favorito_id} salvo: loteca com {len(dezenas)} jogos"
+
+    texto = f"Favorito {favorito_id} salvo: {modalidade} {' '.join(dezenas)}"
+
+    if extra:
+        texto += f" {{{extra}}}"
+
+    return texto
+
+
 def cmd_adicionar(args):
     favorito_id, modalidade, dezenas, extra = cria_favorito(
         args.modalidade,
         args.valores,
         nome=args.nome,
     )
-    texto = f"Favorito {favorito_id} salvo: {modalidade} {' '.join(dezenas)}"
-
-    if extra:
-        texto += f" {{{extra}}}"
-
-    print(texto)
+    print(texto_favorito_salvo(favorito_id, modalidade, dezenas, extra))
 
 
 def cmd_listar(args):
@@ -186,6 +267,19 @@ def cmd_listar(args):
 
     for favorito in favoritos:
         print(formata_favorito(favorito))
+
+
+def le_filtro_listagem():
+    while True:
+        resposta = normaliza_texto(input("Listar todos ou alguma modalidade? [T/M] "))
+
+        if resposta in ("", "t", "todos", "todo"):
+            return None
+
+        if resposta in ("m", "modalidade", "alguma"):
+            return le_modalidade()
+
+        print("Informe T/todos ou M/modalidade.")
 
 
 def cmd_remover(args):
@@ -237,7 +331,8 @@ def modo_interativo():
             return
 
         if opcao == "1":
-            cmd_listar(argparse.Namespace(modalidade=None))
+            modalidade = le_filtro_listagem()
+            cmd_listar(argparse.Namespace(modalidade=modalidade))
             continue
 
         if opcao == "2":
@@ -255,12 +350,7 @@ def modo_interativo():
                 print(f"Não consegui salvar: {erro}")
                 continue
 
-            texto = f"Favorito {favorito_id} salvo: {modalidade} {' '.join(dezenas)}"
-
-            if extra:
-                texto += f" {{{extra}}}"
-
-            print(texto)
+            print(texto_favorito_salvo(favorito_id, modalidade, dezenas, extra))
             continue
 
         if opcao == "3":
