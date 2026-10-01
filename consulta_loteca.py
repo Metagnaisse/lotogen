@@ -3,6 +3,7 @@
 import os
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
+from math import isfinite
 from unicodedata import normalize
 
 import requests
@@ -343,10 +344,21 @@ def similaridade_jogo(jogo_loteca, evento):
         + similaridade_time(jogo_loteca["visitante"], home)
     ) / 2
 
-    if direto >= invertido:
-        return direto, False
+    melhor_times, invertido = (direto, False) if direto >= invertido else (invertido, True)
+    data_jogo = data_iso(jogo_loteca.get("data"))
+    data_evento = data_iso(evento.get("commence_time"))
 
-    return invertido, True
+    if data_jogo and data_evento:
+        diferenca = abs(
+            (
+                datetime.strptime(data_jogo, "%Y-%m-%d")
+                - datetime.strptime(data_evento, "%Y-%m-%d")
+            ).days
+        )
+        similaridade_data = max(0.0, 1.0 - diferenca / 2)
+        return melhor_times * 0.75 + similaridade_data * 0.25, invertido
+
+    return melhor_times, invertido
 
 
 def encontrar_evento(jogo_loteca, eventos):
@@ -364,7 +376,13 @@ def encontrar_evento(jogo_loteca, eventos):
             melhor_invertido = invertido
             melhor_nome = f"{evento.get('home_team', '')} x {evento.get('away_team', '')}"
 
-    minimo = float(os.getenv("THE_ODDS_API_MATCH_MIN_SCORE", "0.78"))
+    try:
+        minimo = float(os.getenv("THE_ODDS_API_MATCH_MIN_SCORE", "0.78"))
+    except ValueError:
+        minimo = 0.78
+
+    if not isfinite(minimo) or not 0 <= minimo <= 1:
+        minimo = 0.78
 
     if melhor_score < minimo:
         return None, melhor_score, melhor_invertido, melhor_nome
@@ -457,6 +475,10 @@ def buscar_odds_the_odds_api_por_sport(sport, inicio, fim):
     resposta.raise_for_status()
     eventos = resposta.json()
 
+    if not isinstance(eventos, list):
+        depurar(f"{sport}: resposta sem lista de eventos")
+        return []
+
     for evento in eventos:
         if isinstance(evento, dict):
             evento["sport_key"] = sport
@@ -506,9 +528,12 @@ def odds_1x2_the_odds_api(evento):
                     continue
 
                 try:
-                    odds[coluna].append(float(outcome["price"]))
+                    odd = float(outcome["price"])
                 except (KeyError, TypeError, ValueError):
                     continue
+
+                if isfinite(odd) and odd > 1:
+                    odds[coluna].append(odd)
 
     if not all(odds.values()):
         return None
@@ -521,9 +546,11 @@ def completar_odds_the_odds_api(jogos):
         return jogos
 
     eventos = buscar_eventos_the_odds_api(jogos)
+    usados = set()
 
     for jogo in jogos:
-        evento, score, invertido, nome = encontrar_evento(jogo, eventos)
+        disponiveis = [evento for evento in eventos if id(evento) not in usados]
+        evento, score, invertido, nome = encontrar_evento(jogo, disponiveis)
 
         if evento is None:
             jogo["odds_encontradas"] = False
@@ -531,6 +558,8 @@ def completar_odds_the_odds_api(jogos):
             jogo["odds_match_score"] = score
             jogo["odds_melhor_candidato"] = nome
             continue
+
+        usados.add(id(evento))
 
         odds = odds_1x2_the_odds_api(evento)
 

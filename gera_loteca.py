@@ -9,6 +9,7 @@ import argparse
 import csv
 import os
 from dataclasses import dataclass
+from math import isfinite
 
 from banco_lotogen import concurso_loteca_existe, jogos_loteca as jogos_loteca_banco, salvar_loteca
 from consulta_loteca import (
@@ -21,7 +22,7 @@ from consulta_loteca import (
 )
 
 
-ARQUIVO_PADRAO = "loteca_atual.csv"
+ARQUIVO_PADRAO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
 CABECALHO = ["odd_mandante", "odd_empate", "odd_visitante", "time_mandante", "time_visitante"]
 METADADO_CONCURSO = "# concurso"
 
@@ -54,8 +55,8 @@ def le_decimal(mensagem):
             print("Informe um numero decimal. Exemplo: 1.80")
             continue
 
-        if valor <= 1:
-            print("A odd precisa ser maior que 1.")
+        if not isfinite(valor) or valor <= 1:
+            print("A odd precisa ser finita e maior que 1.")
             continue
 
         return valor
@@ -228,8 +229,8 @@ def validar_jogos(jogos):
 
         odds = (jogo.odd_mandante, jogo.odd_empate, jogo.odd_visitante)
 
-        if any(odd is None or odd <= 1 for odd in odds):
-            raise ValueError(f"Jogo {indice:02d}: informe odds validas maiores que 1.")
+        if any(odd is None or not isfinite(odd) or odd <= 1 for odd in odds):
+            raise ValueError(f"Jogo {indice:02d}: informe odds finitas e maiores que 1.")
 
 
 def concurso_csv(caminho):
@@ -283,7 +284,13 @@ def jogos_salvos_do_banco(concurso):
     ]
 
 
-def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, concurso=None):
+def atualizar_loteca(
+    saida=ARQUIVO_PADRAO,
+    manual=False,
+    concurso=None,
+    force=False,
+    dados_concurso=None,
+):
     caminho_saida = os.path.abspath(saida)
 
     if manual:
@@ -291,24 +298,30 @@ def atualizar_loteca(saida=ARQUIVO_PADRAO, manual=False, concurso=None):
         numero_concurso = concurso
         data_proximo_concurso = None
     else:
-        try:
-            concurso_atual_caixa = escolher_concurso_caixa(concurso)
-        except Exception as erro:
-            print(f"Nao consegui buscar os jogos oficiais: {erro}")
-            concurso_atual_caixa = None
+        concurso_atual_caixa = dados_concurso
+        if concurso_atual_caixa is None:
+            try:
+                concurso_atual_caixa = escolher_concurso_caixa(concurso)
+            except Exception as erro:
+                print(f"Nao consegui buscar os jogos oficiais: {erro}")
+                concurso_atual_caixa = None
 
         numero_concurso = numero_concurso_caixa(concurso_atual_caixa) if concurso_atual_caixa else concurso
         data_proximo_concurso = (
             concurso_atual_caixa.get("dataProximoConcurso") if concurso_atual_caixa else None
         )
 
-        if numero_concurso and concurso_loteca_existe(numero_concurso):
-            if concurso_csv(caminho_saida) == int(numero_concurso):
-                print(f"A Loteca local ja esta atualizada para o concurso {numero_concurso}.")
-                return caminho_saida
-
+        if numero_concurso and concurso_loteca_existe(numero_concurso) and not force:
             jogos_salvos = jogos_salvos_do_banco(numero_concurso)
-            if jogos_salvos:
+            try:
+                validar_jogos(jogos_salvos)
+            except ValueError:
+                print("O concurso salvo esta incompleto; buscando os dados novamente.")
+            else:
+                if concurso_csv(caminho_saida) == int(numero_concurso):
+                    print(f"A Loteca local ja esta atualizada para o concurso {numero_concurso}.")
+                    return caminho_saida
+
                 escrever_csv(jogos_salvos, caminho_saida, numero_concurso)
                 print(f"Banco ja tinha o concurso {numero_concurso}.")
                 print(f"Arquivo atualizado: {caminho_saida}")
@@ -352,6 +365,11 @@ def parse_args():
         type=int,
         help="Numero do concurso da Loteca a atualizar ou usar em modo manual.",
     )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Consulta novamente os jogos e odds mesmo quando o concurso ja existe.",
+    )
     return parser.parse_args()
 
 
@@ -361,6 +379,7 @@ def main():
         saida=args.saida,
         manual=args.manual,
         concurso=args.concurso,
+        force=args.force,
     )
 
 

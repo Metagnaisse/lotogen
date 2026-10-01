@@ -6,16 +6,21 @@ import sqlite3
 from datetime import datetime
 
 
-CAMINHO_BANCO = "lotogen.db"
+CAMINHO_BANCO = os.getenv(
+    "LOTOGEN_DB",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "lotogen.db"),
+)
 
 
 def agora_iso():
     return datetime.now().isoformat(timespec="seconds")
 
 
-def conectar(caminho=CAMINHO_BANCO):
+def conectar(caminho=None):
+    caminho = caminho or CAMINHO_BANCO
     conexao = sqlite3.connect(caminho)
     conexao.row_factory = sqlite3.Row
+    conexao.execute("PRAGMA foreign_keys = ON")
     inicializar(conexao)
     return conexao
 
@@ -74,9 +79,15 @@ def inicializar(conexao):
             extra TEXT,
             criado_em TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS migracoes_lotogen (
+            nome TEXT PRIMARY KEY,
+            executada_em TEXT NOT NULL
+        );
         """
     )
     migrar_loteca_jogos(conexao)
+    migrar_favoritos_multiplos(conexao)
     conexao.commit()
 
 
@@ -88,6 +99,70 @@ def coluna_existe(conexao, tabela, coluna):
 def migrar_loteca_jogos(conexao):
     if not coluna_existe(conexao, "loteca_jogos", "competicao"):
         conexao.execute("ALTER TABLE loteca_jogos ADD COLUMN competicao TEXT")
+
+
+def migrar_favoritos_multiplos(conexao):
+    """Recupera dezenas que versões antigas gravavam no campo extra."""
+    nome_migracao = "favoritos_multiplos_v1"
+    executada = conexao.execute(
+        "SELECT 1 FROM migracoes_lotogen WHERE nome = ?",
+        (nome_migracao,),
+    ).fetchone()
+    if executada:
+        return
+
+    limites = {
+        "mega-sena": 20,
+        "lotofacil": 20,
+        "quina": 15,
+        "dupla-sena": 15,
+        "dia-de-sorte": 15,
+    }
+    linhas = conexao.execute(
+        """
+        SELECT id, modalidade, dezenas_json, extra
+        FROM bilhetes_favoritos
+        WHERE extra IS NOT NULL AND TRIM(extra) <> ''
+        """
+    ).fetchall()
+
+    for linha in linhas:
+        maximo = limites.get(linha["modalidade"])
+        if not maximo:
+            continue
+
+        try:
+            dezenas = json.loads(linha["dezenas_json"])
+        except (TypeError, json.JSONDecodeError):
+            continue
+
+        if not isinstance(dezenas, list):
+            continue
+
+        tokens = str(linha["extra"]).split()
+        recuperadas = []
+        while tokens and len(dezenas) + len(recuperadas) < maximo:
+            token = tokens[0].strip("{}")
+            try:
+                int(token)
+            except ValueError:
+                break
+            recuperadas.append(tokens.pop(0))
+
+        if not recuperadas:
+            continue
+
+        dezenas.extend(recuperadas)
+        extra = " ".join(tokens).strip() or None
+        conexao.execute(
+            "UPDATE bilhetes_favoritos SET dezenas_json = ?, extra = ? WHERE id = ?",
+            (json.dumps(dezenas, ensure_ascii=False), extra, linha["id"]),
+        )
+
+    conexao.execute(
+        "INSERT INTO migracoes_lotogen (nome, executada_em) VALUES (?, ?)",
+        (nome_migracao, agora_iso()),
+    )
 
 
 def maior_concurso_numerico(modalidade):
@@ -115,6 +190,13 @@ def salvar_resultado_numerico(modalidade, concurso, dezenas, data_sorteio=None, 
                 extra,
                 agora_iso(),
             ),
+        )
+        conexao.execute(
+            """
+            DELETE FROM frequencias_numericas
+            WHERE modalidade = ? AND ? BETWEEN concurso_inicial AND concurso_final
+            """,
+            (modalidade, int(concurso)),
         )
         conexao.commit()
 
@@ -222,11 +304,18 @@ def salvar_loteca(concurso, jogos, data_proximo_concurso=None):
     with conectar() as conexao:
         conexao.execute(
             """
-            INSERT OR REPLACE INTO loteca_concursos
+            INSERT INTO loteca_concursos
                 (concurso, data_proximo_concurso, atualizado_em)
             VALUES (?, ?, ?)
+            ON CONFLICT(concurso) DO UPDATE SET
+                data_proximo_concurso = excluded.data_proximo_concurso,
+                atualizado_em = excluded.atualizado_em
             """,
             (int(concurso), data_proximo_concurso, atualizado_em),
+        )
+        conexao.execute(
+            "DELETE FROM loteca_jogos WHERE concurso = ?",
+            (int(concurso),),
         )
 
         for indice, jogo in enumerate(jogos, start=1):

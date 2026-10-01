@@ -40,22 +40,51 @@ Execute o gerador principal:
 python lotogen.py
 ```
 
+### Atualizar bancos sem gerar bilhetes
+
+O subcomando `atualizar` executa somente a manutenção dos bancos:
+
+```powershell
+# Todos os históricos numéricos e todos os concursos atuais da Loteca
+python lotogen.py atualizar
+
+# Uma ou mais modalidades numéricas
+python lotogen.py atualizar mega-sena quina
+
+# Somente a Loteca
+python lotogen.py atualizar loteca
+
+# Um concurso específico da Loteca
+python lotogen.py atualizar loteca --concurso 1255
+
+# Consulta novamente as odds mesmo que o concurso já esteja salvo
+python lotogen.py atualizar loteca --concurso 1255 --force
+```
+
+`todos` também pode ser informado explicitamente: `python lotogen.py atualizar todos`.
+O comando retorna código de saída diferente de zero quando alguma atualização não é concluída.
+
 O programa mostra um menu com as modalidades disponíveis. Informe os números das modalidades desejadas, a quantidade de bilhetes e, quando aplicável, a quantidade de números por aposta múltipla.
 
 Nas perguntas de sim/não, o programa aceita `S` ou `1` para sim e `N` ou `0` para não.
 
-Ao escolher Loteca, o programa pergunta se você deseja atualizar `loteca_atual.csv` antes de gerar os bilhetes. Se `THE_ODDS_API_KEY` estiver configurada, ele tenta buscar as odds automaticamente; caso contrário, ou se alguma odd não for encontrada, pergunta os valores manualmente.
+Ao escolher Loteca, o programa consulta os concursos atuais da Caixa, verifica se cada um possui 14 jogos e odds válidas no banco e oferece a atualização quando necessário. Depois da checagem, somente concursos atuais e prontos são priorizados para a geração. Se `THE_ODDS_API_KEY` estiver configurada, ele tenta buscar as odds automaticamente; caso contrário, ou se alguma odd não for encontrada, pergunta os valores manualmente.
+
+A checagem normal confirma presença e integridade dos dados, mas não consulta novamente odds já salvas. Para recotar um concurso existente, use `python gera_loteca.py --concurso NUMERO --force`.
 
 Nas modalidades numéricas, o programa também permite escolher entre geração aleatória, números mais sorteados ou números menos sorteados. Para as opções históricas, ele sincroniza os resultados da Caixa com o banco local; por padrão usa todos os concursos disponíveis, mas você pode informar um número para limitar a consulta. Se não conseguir atualizar pela internet, usa o histórico local disponível.
-Ao iniciar, depois da escolha das modalidades, o programa mostra a cobertura local de cada banco escolhido. Para modalidades numéricas, oferece atualização quando o banco histórico está vazio ou com menos de 75% dos concursos disponíveis. Se a Loteca for escolhida, também compara o concurso local com o concurso atual da Caixa e oferece atualizar quando estiver defasada.
+Ao escolher uma estratégia histórica, o programa mostra a cobertura local da modalidade e oferece atualização quando necessário. A geração aleatória não faz essa consulta de rede. Para a Loteca, o concurso local é comparado com os concursos atuais da Caixa e a atualização é oferecida quando estiver defasado.
 Depois de imprimir os bilhetes gerados, o programa pergunta se você deseja salvar algum deles nos favoritos.
 Bilhetes da Loteca tambem podem ser salvos; nesse caso o favorito guarda os 14 jogos com as colunas escolhidas.
+A +Milionária aceita apostas de 6 a 12 números e de 2 a 6 trevos.
 
 ## Loteca
 
 Para a Loteca, o programa usa primeiro o banco local. O arquivo `loteca_atual.csv` continua sendo exportado apenas por compatibilidade, com 14 jogos nas linhas 2 a 15:
 
-Quando houver mais de um concurso da Loteca salvo no banco local, o gerador lista os concursos e pergunta qual deles deve ser usado. Isso cobre periodos com concursos concomitantes, como uma edicao normal e uma edicao especial da Copa.
+Quando houver mais de um concurso atual da Loteca pronto no banco local, o gerador pergunta qual deles deve ser usado. Isso cobre períodos com concursos concomitantes, como uma edição normal e uma edição especial da Copa. Concursos anteriores ou o `loteca_atual.csv` só são usados após confirmação explícita quando nenhum concurso atual está pronto.
+
+No modo `razão`, as probabilidades implícitas são calculadas pelo inverso das odds e normalizadas. Duplos e triplos são distribuídos para maximizar a probabilidade conjunta coberta. Ao pedir vários bilhetes, o programa gera variantes distintas em ordem decrescente de cobertura. No modo `emoção`, as colunas são sorteadas com pesos derivados dessas probabilidades.
 
 ```csv
 odd_mandante;odd_empate;odd_visitante;time_mandante;time_visitante
@@ -109,9 +138,12 @@ Opções úteis:
 
 ```powershell
 python gera_loteca.py --concurso 1255
+python gera_loteca.py --concurso 1255 --force
 python gera_loteca.py --manual --concurso 1253
 python gera_loteca.py --saida outro_arquivo.csv
 ```
+
+Use `--force` para consultar novamente jogos e odds de um concurso já salvo.
 
 ## Consulta da API da Caixa
 
@@ -132,6 +164,8 @@ O arquivo `favoritos.py` permite cadastrar, listar e remover bilhetes favoritos 
 ```powershell
 python favoritos.py adicionar timemania 04 06 08 09 10 27 46 75 76 79 Internacional/RS
 python favoritos.py adicionar mega 03 04 09 12 23 51
+python favoritos.py adicionar mega 03 04 09 12 23 40 51
+python favoritos.py adicionar mais-milionaria 03 04 09 12 23 40 45 --trevos 1 2 4
 python favoritos.py adicionar loteca 1 X 2 1/X 1 2 X 1 X 2 1 1/X X 2
 python favoritos.py listar
 python favoritos.py remover 1
@@ -139,9 +173,24 @@ python favoritos.py remover 1
 
 Ao executar `python favoritos.py` sem subcomando, ele abre um menu interativo.
 
+## Dados locais e testes
+
+Por padrão, `lotogen.db` e `loteca_atual.csv` ficam na pasta do programa, independentemente do diretório usado para executar o comando. Para usar outro banco:
+
+```powershell
+$env:LOTOGEN_DB="C:\dados\lotogen.db"
+```
+
+Execute os testes automatizados com:
+
+```powershell
+python -m unittest discover -v
+```
+
 ## Estrutura
 
 - `lotogen.py`: gerador principal e leitura de CSV/ODS/XLSX da Loteca.
+- `algoritmo_loteca.py`: cálculo puro das probabilidades, múltiplos e variantes da Loteca.
 - `gera_loteca.py`: assistente para gerar ou atualizar `loteca_atual.csv`.
 - `consulta_loteca.py`: consulta reutilizável da programação da Loteca.
 - `favoritos.py`: gerenciador de bilhetes favoritos.

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from collections.abc import Mapping
 from unicodedata import normalize
 
 from banco_lotogen import listar_favoritos, remover_favorito, salvar_favorito
@@ -27,9 +28,49 @@ def time_atual(time):
 
 def separa_dezenas_e_extra(modalidade, valores):
     regra = MODALIDADES[modalidade]
-    quantidade = regra["min"]
-    dezenas = valores[:quantidade]
-    extra = " ".join(valores[quantidade:]).strip() or None
+
+    if isinstance(valores, Mapping):
+        return list(valores.get("dezenas", [])), valores.get("extra")
+
+    valores = list(valores)
+
+    if modalidade == "super-sete":
+        colunas = [
+            valor if isinstance(valor, list) else str(valor).replace(",", "/").split("/")
+            for valor in valores
+        ]
+        return colunas, None
+
+    if modalidade == "mais-milionaria":
+        dezenas = [valor for valor in valores if not str(valor).strip().startswith("{")]
+        trevos = [str(valor).strip().strip("{}") for valor in valores if str(valor).strip().startswith("{")]
+
+        if trevos:
+            return dezenas, trevos
+
+        # Compatibilidade com a sintaxe antiga: 6 dezenas seguidas dos trevos.
+        return valores[: regra["min"]], valores[regra["min"] :]
+
+    if "extra" not in regra:
+        return valores, None
+
+    dezenas = []
+    restantes = []
+    for valor in valores:
+        if len(dezenas) < regra["max"]:
+            try:
+                int(valor)
+            except (TypeError, ValueError):
+                restantes.append(valor)
+            else:
+                if not restantes:
+                    dezenas.append(valor)
+                    continue
+                restantes.append(valor)
+        else:
+            restantes.append(valor)
+
+    extra = " ".join(str(valor) for valor in restantes).strip() or None
     return dezenas, extra
 
 
@@ -60,6 +101,20 @@ def valida_colunas_super_sete(colunas):
 
         normalizadas.append("/".join(str(numero) for numero in sorted(numeros)))
 
+    total = sum(len(coluna.split("/")) for coluna in normalizadas)
+
+    if not 7 <= total <= 21:
+        raise ValueError("Super Sete precisa ter entre 7 e 21 números no total.")
+
+    minimo_coluna, maximo_coluna = ((1, 2) if total <= 14 else (2, 3))
+    for indice, coluna in enumerate(normalizadas, start=1):
+        quantidade = len(coluna.split("/"))
+        if not minimo_coluna <= quantidade <= maximo_coluna:
+            raise ValueError(
+                f"Coluna {indice}: use de {minimo_coluna} a {maximo_coluna} números "
+                f"quando a aposta tiver {total} números."
+            )
+
     return normalizadas
 
 
@@ -69,8 +124,10 @@ def valida_dezenas(modalidade, dezenas):
 
     regra = MODALIDADES[modalidade]
 
-    if len(dezenas) != regra["min"]:
-        raise ValueError(f"{modalidade} precisa de {regra['min']} dezenas.")
+    if not regra["min"] <= len(dezenas) <= regra["max"]:
+        raise ValueError(
+            f"{modalidade} precisa ter entre {regra['min']} e {regra['max']} dezenas."
+        )
 
     numeros = []
     for dezena in dezenas:
@@ -104,7 +161,8 @@ def valida_extra(modalidade, extra):
             raise ValueError("+Milionária precisa de 2 trevos.")
 
         trevos = []
-        for trevo in extra.split():
+        valores = extra if isinstance(extra, (list, tuple)) else str(extra).split()
+        for trevo in valores:
             try:
                 numero = int(trevo.strip("{}"))
             except ValueError:
@@ -115,10 +173,24 @@ def valida_extra(modalidade, extra):
 
             trevos.append(numero)
 
-        if len(trevos) != 2 or len(set(trevos)) != 2:
-            raise ValueError("+Milionária precisa de 2 trevos diferentes.")
+        minimo = MODALIDADES[modalidade]["trevos_min"]
+        maximo = MODALIDADES[modalidade]["trevos_max"]
+        if not minimo <= len(trevos) <= maximo or len(set(trevos)) != len(trevos):
+            raise ValueError(
+                f"+Milionária precisa de {minimo} a {maximo} trevos diferentes."
+            )
 
         return " ".join(str(trevo) for trevo in sorted(trevos))
+
+    if modalidade == "dia-de-sorte":
+        if not extra:
+            raise ValueError("Dia de Sorte precisa de um Mês da Sorte.")
+
+        meses = {normaliza_texto(mes): mes for mes in MODALIDADES[modalidade]["extra"]}
+        mes = meses.get(normaliza_texto(extra))
+        if not mes:
+            raise ValueError("Informe um Mês da Sorte válido.")
+        return mes
 
     if modalidade != "timemania":
         return extra
@@ -249,9 +321,13 @@ def texto_favorito_salvo(favorito_id, modalidade, dezenas, extra=None):
 
 
 def cmd_adicionar(args):
+    valores = args.valores
+    if getattr(args, "trevos", None):
+        valores = {"dezenas": valores, "extra": args.trevos}
+
     favorito_id, modalidade, dezenas, extra = cria_favorito(
         args.modalidade,
-        args.valores,
+        valores,
         nome=args.nome,
     )
     print(texto_favorito_salvo(favorito_id, modalidade, dezenas, extra))
@@ -337,7 +413,19 @@ def modo_interativo():
 
         if opcao == "2":
             modalidade = le_modalidade()
-            valores = input("Dezenas e extra, se houver: ").strip().split()
+            dezenas = input("Dezenas: ").strip().split()
+            if modalidade == "mais-milionaria":
+                valores = {
+                    "dezenas": dezenas,
+                    "extra": input("Trevos: ").strip().split(),
+                }
+            elif modalidade in ("timemania", "dia-de-sorte"):
+                valores = {
+                    "dezenas": dezenas,
+                    "extra": input("Time/Mês da Sorte: ").strip(),
+                }
+            else:
+                valores = dezenas
             nome = input("Nome opcional: ").strip() or None
 
             try:
@@ -373,6 +461,11 @@ def parse_args():
     adicionar = subparsers.add_parser("adicionar", help="Cadastra um bilhete favorito.")
     adicionar.add_argument("modalidade")
     adicionar.add_argument("valores", nargs="+")
+    adicionar.add_argument(
+        "--trevos",
+        nargs="+",
+        help="Trevos da +Milionária, separados das dezenas.",
+    )
     adicionar.add_argument("--nome")
     adicionar.set_defaults(func=cmd_adicionar)
 

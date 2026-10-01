@@ -108,8 +108,14 @@ def concursos_para_consulta(ultimo, quantidade):
     return range(primeiro, ultimo + 1)
 
 
-def frequencias_historicas(modalidade, quantidade_concursos=200, zero_final=False):
-    sincronizar_historico(modalidade)
+def frequencias_historicas(
+    modalidade,
+    quantidade_concursos=200,
+    zero_final=False,
+    atualizar=True,
+):
+    if atualizar:
+        sincronizar_historico(modalidade)
     inicio_banco, fim_banco = intervalo_concursos_numericos(modalidade)
 
     if fim_banco is None:
@@ -123,10 +129,11 @@ def frequencias_historicas(modalidade, quantidade_concursos=200, zero_final=Fals
     dezenas_cache, extras_cache = ler_frequencias(modalidade, concurso_inicial, fim_banco)
 
     if dezenas_cache:
+        consultados = len(resultados_numericos(modalidade, concurso_inicial))
         return (
             Counter({int(item): frequencia for item, frequencia in dezenas_cache.items()}),
             Counter(extras_cache),
-            fim_banco - concurso_inicial + 1,
+            consultados,
         )
 
     frequencias = Counter()
@@ -154,9 +161,10 @@ def frequencias_historicas(modalidade, quantidade_concursos=200, zero_final=Fals
     return frequencias, frequencias_extra, consultados
 
 
-def frequencias_super_sete_por_coluna(quantidade_concursos=200):
+def frequencias_super_sete_por_coluna(quantidade_concursos=200, atualizar=True):
     modalidade = "super-sete"
-    sincronizar_historico(modalidade)
+    if atualizar:
+        sincronizar_historico(modalidade)
     inicio_banco, fim_banco = intervalo_concursos_numericos(modalidade)
 
     if fim_banco is None:
@@ -200,7 +208,7 @@ def sincronizar_historico(modalidade):
             raise RuntimeError(f"Nao consegui consultar a Caixa e nao ha historico local: {erro}")
 
         print(f"Nao consegui verificar novos concursos na Caixa. Usando historico local ate {ultimo_local}.")
-        return
+        return False
 
     concursos_salvos = {
         int(linha["concurso"])
@@ -213,21 +221,24 @@ def sincronizar_historico(modalidade):
     ]
 
     if not concursos_pendentes:
-        return
+        return True
 
     print(f"Atualizando historico de {modalidade}: {len(concursos_pendentes)} concursos pendentes.")
     total = len(concursos_pendentes)
+    sucesso = True
 
     for posicao, concurso in enumerate(concursos_pendentes, start=1):
         try:
             dados = resultado_concurso(modalidade, concurso)
         except requests.RequestException:
+            sucesso = False
             mostrar_progresso(posicao, total, prefixo="Historico")
             continue
 
         dezenas = dezenas_resultado(dados)
 
         if not dezenas:
+            sucesso = False
             mostrar_progresso(posicao, total, prefixo="Historico")
             continue
 
@@ -239,6 +250,8 @@ def sincronizar_historico(modalidade):
             extra=extra_resultado(dados),
         )
         mostrar_progresso(posicao, total, prefixo="Historico")
+
+    return sucesso
 
 
 def cobertura_historico(modalidade):
@@ -303,11 +316,13 @@ def ranking_dezenas_por_frequencia(
     fim,
     quantidade_concursos=200,
     zero_final=False,
+    atualizar=True,
 ):
     frequencias, frequencias_extra, consultados = frequencias_historicas(
         modalidade,
         quantidade_concursos=quantidade_concursos,
         zero_final=zero_final,
+        atualizar=atualizar,
     )
     universo = range(inicio, fim + 1)
     reverso = estrategia == "mais"
@@ -331,9 +346,14 @@ def ranking_extra_por_frequencia(frequencias, estrategia):
     ]
 
 
-def ranking_super_sete_por_frequencia(estrategia, quantidade_concursos=200):
+def ranking_super_sete_por_frequencia(
+    estrategia,
+    quantidade_concursos=200,
+    atualizar=True,
+):
     frequencias, consultados = frequencias_super_sete_por_coluna(
         quantidade_concursos=quantidade_concursos,
+        atualizar=atualizar,
     )
     reverso = estrategia == "mais"
     rankings = []
@@ -361,6 +381,7 @@ def dezenas_por_frequencia(
     fim,
     quantidade_concursos=200,
     zero_final=False,
+    atualizar=True,
 ):
     ordenadas, _extras, consultados = ranking_dezenas_por_frequencia(
         modalidade,
@@ -369,5 +390,6 @@ def dezenas_por_frequencia(
         fim,
         quantidade_concursos=quantidade_concursos,
         zero_final=zero_final,
+        atualizar=atualizar,
     )
     return sorted(ordenadas[:quantidade]), consultados

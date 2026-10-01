@@ -1,17 +1,34 @@
-﻿"""Gerador de bilhetes das loterias numéricas da Caixa."""
+﻿"""Gerador de bilhetes e manutenção dos bancos locais do Lotogen."""
 
+import argparse
 import csv
 import os
 import zipfile
+from math import isfinite
 from xml.etree import ElementTree
-from random import choices, sample
+from random import sample
 from unicodedata import normalize
 
-from banco_lotogen import concurso_loteca_atual, concursos_loteca, jogos_loteca
+from algoritmo_loteca import (
+    COLUNAS_LOTECA,
+    capacidade_bilhetes_loteca,
+    combinacao_loteca_por_variante,
+    distribuir_multiplos_loteca,
+    equilibrio_loteca,
+    gera_bilhete_loteca,
+    opcoes_colunas_loteca,
+    probabilidades_por_odds,
+    ranking_colunas_loteca,
+)
+from banco_lotogen import (
+    concursos_loteca,
+    intervalo_concursos_numericos,
+    jogos_loteca,
+    total_resultados_numericos,
+)
 from consulta_loteca import buscar_programacao_loteca, numero_concurso as numero_concurso_loteca
 from historico_loterias import (
     cobertura_historico,
-    dezenas_por_frequencia,
     ranking_dezenas_por_frequencia,
     ranking_super_sete_por_frequencia,
     sincronizar_historico,
@@ -126,7 +143,15 @@ MODALIDADES = {
     "dupla-sena": {"min": 6, "max": 15, "inicio": 1, "fim": 50},
     "dia-de-sorte": {"min": 7, "max": 15, "inicio": 1, "fim": 31, "extra": lista_meses},
     "super-sete": {"min": 7, "max": 21, "inicio": 0, "fim": 9},
-    "mais-milionaria": {"min": 6, "max": 6, "inicio": 1, "fim": 50, "trevos": True},
+    "mais-milionaria": {
+        "min": 6,
+        "max": 12,
+        "inicio": 1,
+        "fim": 50,
+        "trevos": True,
+        "trevos_min": 2,
+        "trevos_max": 6,
+    },
 }
 
 ALIASES = {
@@ -152,9 +177,6 @@ ALIASES = {
     "mais-milionaria": "mais-milionaria",
     "loteca": "loteca",
 }
-
-COLUNAS_LOTECA = ("1", "X", "2")
-
 
 def normaliza_nome(nome):
     """Remove diferenças simples de acento, maiúsculas e espaços duplicados."""
@@ -245,31 +267,39 @@ def gera_bilhete_comum(modalidade, quantidade=None):
 
 
 def gera_bilhete_historico(modalidade, quantidade, estrategia, concursos=0):
-    regra = MODALIDADES[modalidade]
-    quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
-    numeros, consultados = dezenas_por_frequencia(
+    bilhetes, consultados = gera_bilhetes_historicos(
         modalidade,
         quantidade,
         estrategia,
-        regra["inicio"],
-        regra["fim"],
-        quantidade_concursos=concursos,
-        zero_final=regra.get("zero_final", False),
+        total=1,
+        concursos=concursos,
     )
-    bilhete = [formata_numero(numero, regra.get("zero_final", False)) for numero in numeros]
-
-    if "extra" in regra:
-        bilhete.append(f"{{{escolhe_nome(regra['extra'])}}}")
-
-    return bilhete, consultados
+    return bilhetes[0], consultados
 
 
-def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concursos=0):
+def gera_bilhetes_historicos(
+    modalidade,
+    quantidade,
+    estrategia,
+    total,
+    concursos=0,
+    atualizar_historico=True,
+):
     regra = MODALIDADES[modalidade]
+    quantidade_trevos = regra.get("trevos_min", 0)
+
+    if modalidade == "mais-milionaria" and isinstance(quantidade, dict):
+        quantidade_trevos = quantidade.get("trevos", quantidade_trevos)
+        quantidade = quantidade.get("numeros")
+
     quantidade = valida_quantidade(quantidade, regra["min"], regra["max"])
 
     if modalidade == "super-sete":
-        rankings, consultados = ranking_super_sete_por_frequencia(estrategia, concursos)
+        rankings, consultados = ranking_super_sete_por_frequencia(
+            estrategia,
+            concursos,
+            atualizar=atualizar_historico,
+        )
         bilhetes = []
 
         for indice in range(total):
@@ -294,6 +324,7 @@ def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concurso
         regra["fim"],
         quantidade_concursos=concursos,
         zero_final=regra.get("zero_final", False),
+        atualizar=atualizar_historico,
     )
     bilhetes = []
     if "extra" in regra:
@@ -315,13 +346,18 @@ def gera_bilhetes_historicos(modalidade, quantidade, estrategia, total, concurso
             bilhete.append(f"{{{extra}}}")
 
         if regra.get("trevos"):
-            if len(ranking_extra) >= 2:
+            quantidade_trevos = valida_quantidade(
+                quantidade_trevos,
+                regra["trevos_min"],
+                regra["trevos_max"],
+            )
+            if len(ranking_extra) >= quantidade_trevos:
                 trevos = [
                     ranking_extra[(indice + posicao) % len(ranking_extra)]
-                    for posicao in range(2)
+                    for posicao in range(quantidade_trevos)
                 ]
             else:
-                trevos = sorted(sample(range(1, 7), 2))
+                trevos = sorted(sample(range(1, 7), quantidade_trevos))
 
             bilhete.extend(f"{{{trevo}}}" for trevo in sorted(trevos, key=int))
 
@@ -356,81 +392,20 @@ def gera_super_sete(quantidade=None):
     return colunas
 
 
-def gera_mais_milionaria():
-    numeros = gera_num(6, 1, 50)
-    trevos = [f"{{{trevo}}}" for trevo in sorted(sample(range(1, 7), 2))]
-    return numeros + trevos
-
-
-def probabilidades_por_odds(odds):
-    inversos = [1 / odd for odd in odds]
-    total = sum(inversos)
-    return [inverso / total for inverso in inversos]
-
-
-def ranking_colunas_loteca(probabilidades):
-    indices = sorted(range(3), key=lambda indice: probabilidades[indice], reverse=True)
-    return [COLUNAS_LOTECA[indice] for indice in indices]
-
-
-def equilibrio_loteca(probabilidades):
-    ordenadas = sorted(probabilidades, reverse=True)
-    return ordenadas[1] / ordenadas[0]
-
-
-def coluna_base_loteca(probabilidades, modo):
-    if modo == "razao":
-        return ranking_colunas_loteca(probabilidades)[0]
-
-    return choices(COLUNAS_LOTECA, weights=probabilidades, k=1)[0]
-
-
-def gera_bilhete_loteca(jogos, duplos=1, triplos=0, modo="emocao"):
-    if len(jogos) != 14:
-        raise ValueError("A Loteca precisa de odds para 14 jogos.")
-
-    duplos = valida_quantidade(duplos, 1, 14)
-    triplos = valida_quantidade(triplos, 0, 14)
-
-    if duplos + triplos > 14:
-        raise ValueError("A soma de duplos e triplos não pode passar de 14.")
-
-    palpites = []
-
-    for jogo in jogos:
-        probabilidades = probabilidades_por_odds(jogo["odds"])
-        coluna = coluna_base_loteca(probabilidades, modo)
-        palpites.append(
-            {
-                "probabilidades": probabilidades,
-                "colunas": [coluna],
-                "equilibrio": equilibrio_loteca(probabilidades),
-            }
-        )
-
-    indices_equilibrados = sorted(
-        range(14),
-        key=lambda indice: palpites[indice]["equilibrio"],
-        reverse=True,
+def gera_mais_milionaria(quantidade_numeros=6, quantidade_trevos=2):
+    regra = MODALIDADES["mais-milionaria"]
+    quantidade_numeros = valida_quantidade(quantidade_numeros, regra["min"], regra["max"])
+    quantidade_trevos = valida_quantidade(
+        quantidade_trevos,
+        regra["trevos_min"],
+        regra["trevos_max"],
     )
-
-    for indice in indices_equilibrados[:triplos]:
-        palpites[indice]["colunas"] = list(COLUNAS_LOTECA)
-
-    inicio_duplos = triplos
-    fim_duplos = triplos + duplos
-
-    for indice in indices_equilibrados[inicio_duplos:fim_duplos]:
-        palpites[indice]["colunas"] = ranking_colunas_loteca(palpites[indice]["probabilidades"])[:2]
-
-    return [
-        {
-            "colunas": palpite["colunas"],
-            "mandante": jogos[indice].get("mandante"),
-            "visitante": jogos[indice].get("visitante"),
-        }
-        for indice, palpite in enumerate(palpites)
+    numeros = gera_num(quantidade_numeros, regra["inicio"], regra["fim"])
+    trevos = [
+        f"{{{trevo}}}"
+        for trevo in sorted(sample(range(1, 7), quantidade_trevos))
     ]
+    return numeros + trevos
 
 
 def gera_bilhete(modalidade, quantidade=None):
@@ -440,7 +415,12 @@ def gera_bilhete(modalidade, quantidade=None):
         return gera_super_sete(quantidade)
 
     if modalidade == "mais-milionaria":
-        return gera_mais_milionaria()
+        if isinstance(quantidade, dict):
+            return gera_mais_milionaria(
+                quantidade.get("numeros", 6),
+                quantidade.get("trevos", 2),
+            )
+        return gera_mais_milionaria(quantidade or 6)
 
     return gera_bilhete_comum(modalidade, quantidade)
 
@@ -496,9 +476,15 @@ def valores_favorito(modalidade, bilhete):
     if modalidade == "mais-milionaria":
         dezenas = [valor for valor in bilhete if not str(valor).startswith("{")]
         trevos = [str(valor).strip("{}") for valor in bilhete if str(valor).startswith("{")]
-        return dezenas + trevos
+        return {"dezenas": dezenas, "extra": trevos}
 
-    return [str(valor).strip("{}") for valor in bilhete]
+    regra = MODALIDADES[modalidade]
+    dezenas = [str(valor) for valor in bilhete if not str(valor).startswith("{")]
+    extras = [str(valor).strip("{}") for valor in bilhete if str(valor).startswith("{")]
+    return {
+        "dezenas": dezenas,
+        "extra": " ".join(extras) if extras and "extra" in regra else None,
+    }
 
 
 def seleciona_bilhetes_para_salvar(bilhetes):
@@ -697,9 +683,30 @@ def le_modalidades(opcoes):
 
 
 def quantidade_aposta(modalidade):
-    regra = MODALIDADES.get(nome_modalidade(modalidade))
+    modalidade = nome_modalidade(modalidade)
+    regra = MODALIDADES.get(modalidade)
 
-    if regra is None or regra["min"] == regra["max"]:
+    if regra is None:
+        return None
+
+    if modalidade == "mais-milionaria":
+        multipla = le_sim_nao("Quer aposta múltipla? [S/N ou 1/0] ")
+        if not multipla:
+            return None
+
+        numeros = le_inteiro(
+            f"Quantos números por bilhete ({regra['min']} a {regra['max']})? ",
+            regra["min"],
+            regra["max"],
+        )
+        trevos = le_inteiro(
+            f"Quantos trevos por bilhete ({regra['trevos_min']} a {regra['trevos_max']})? ",
+            regra["trevos_min"],
+            regra["trevos_max"],
+        )
+        return {"numeros": numeros, "trevos": trevos}
+
+    if regra["min"] == regra["max"]:
         return None
 
     multipla = le_sim_nao("Quer aposta múltipla? [S/N ou 1/0] ")
@@ -718,8 +725,8 @@ def jogo_loteca_da_linha(linha, numero):
     except (IndexError, TypeError, ValueError):
         raise ValueError(f"Linha {numero}: informe odds válidas nas colunas A, B e C.")
 
-    if any(odd <= 1 for odd in odds):
-        raise ValueError(f"Linha {numero}: as odds precisam ser maiores que 1.")
+    if any(not isfinite(odd) or odd <= 1 for odd in odds):
+        raise ValueError(f"Linha {numero}: as odds precisam ser finitas e maiores que 1.")
 
     mandante = str(linha[3]).strip() if len(linha) > 3 and linha[3] not in (None, "") else None
     visitante = str(linha[4]).strip() if len(linha) > 4 and linha[4] not in (None, "") else None
@@ -733,15 +740,20 @@ def le_loteca_csv(caminho):
     with open(caminho, newline="", encoding="utf-8-sig") as arquivo:
         amostra = arquivo.read(2048)
         arquivo.seek(0)
+        amostra_dados = "\n".join(
+            linha for linha in amostra.splitlines() if not linha.lstrip().startswith("#")
+        )
 
         try:
-            dialeto = csv.Sniffer().sniff(amostra, delimiters=";\t,")
+            dialeto = csv.Sniffer().sniff(amostra_dados, delimiters=";\t,")
         except csv.Error:
-            dialeto = csv.excel
+            leitor = csv.reader(arquivo, delimiter=";")
+        else:
+            leitor = csv.reader(arquivo, dialeto)
 
         linhas = [
             linha
-            for linha in csv.reader(arquivo, dialeto)
+            for linha in leitor
             if linha and not str(linha[0]).lstrip().startswith("#")
         ]
 
@@ -968,8 +980,28 @@ def solicita_planilha_loteca():
         return jogos
 
 
-def escolhe_concurso_loteca_local():
-    concursos = concursos_loteca()
+def loteca_local_pronta(concurso):
+    jogos = jogos_loteca(concurso)
+
+    if len(jogos) != 14:
+        return False
+
+    try:
+        for jogo in jogos:
+            probabilidades_por_odds(jogo["odds"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    return True
+
+
+def escolhe_concurso_loteca_local(preferidos=None):
+    concursos = [
+        item
+        for item in concursos_loteca()
+        if (preferidos is None or item["concurso"] in preferidos)
+        and loteca_local_pronta(item["concurso"])
+    ]
 
     if not concursos:
         return None, []
@@ -1004,16 +1036,43 @@ def escolhe_concurso_loteca_local():
         print("Opção inválida.")
 
 
-def configura_loteca():
+def configura_loteca(concursos_preferidos=None):
     print()
     caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
-    concurso, jogos = escolhe_concurso_loteca_local()
+    concurso, jogos = escolhe_concurso_loteca_local(concursos_preferidos)
+
+    if not jogos and concursos_preferidos:
+        concursos_anteriores = [
+            item["concurso"]
+            for item in concursos_loteca()
+            if item["concurso"] not in concursos_preferidos
+            and loteca_local_pronta(item["concurso"])
+        ]
+        print("Nenhum concurso atual da Caixa está pronto no banco local.")
+
+        if concursos_anteriores and le_sim_nao(
+            "Deseja usar explicitamente um concurso local anterior? [S/N ou 1/0] "
+        ):
+            concurso, jogos = escolhe_concurso_loteca_local(concursos_anteriores)
 
     if jogos:
         print(f"Usando Loteca salva no banco local: concurso {concurso}.")
     elif os.path.exists(caminho_padrao):
-        print("Usando arquivo loteca_atual.csv encontrado na pasta do programa.")
-        jogos = le_planilha_loteca(caminho_padrao)
+        from gera_loteca import concurso_csv
+
+        concurso_arquivo = concurso_csv(caminho_padrao)
+        descricao_arquivo = (
+            f"concurso {concurso_arquivo}" if concurso_arquivo else "concurso não identificado"
+        )
+        print(f"Arquivo alternativo disponível: loteca_atual.csv ({descricao_arquivo}).")
+        usar_csv = le_sim_nao(
+            "Deseja usar o loteca_atual.csv como fonte alternativa? [S/N ou 1/0] "
+        )
+        if usar_csv:
+            print("Usando arquivo loteca_atual.csv encontrado na pasta do programa.")
+            jogos = le_planilha_loteca(caminho_padrao)
+        else:
+            jogos = solicita_planilha_loteca()
     else:
         print("Arquivo loteca_atual.csv não encontrado na pasta do programa.")
         print("A planilha da Loteca deve ter:")
@@ -1021,7 +1080,7 @@ def configura_loteca():
         print("Use as linhas 2 a 15 para os 14 jogos.")
         jogos = solicita_planilha_loteca()
 
-    duplos = le_inteiro("Quantos duplos por bilhete? [1] ", 1, 14, padrao=1)
+    duplos = le_inteiro("Quantos duplos por bilhete? [1] ", 0, 14, padrao=1)
     triplos = le_inteiro("Quantos triplos por bilhete? [0] ", 0, 14 - duplos, padrao=0)
     modo = le_modo_loteca()
     return {"jogos": jogos, "duplos": duplos, "triplos": triplos, "modo": modo}
@@ -1076,6 +1135,8 @@ def checa_bancos_historicos(escolhidos):
     defasados = []
     loteca_defasada = False
     faltantes_loteca = []
+    concursos_remotos = None
+    concursos_remotos_por_numero = {}
 
     print("Verificando bancos locais...")
 
@@ -1103,37 +1164,78 @@ def checa_bancos_historicos(escolhidos):
         print(f"- {modalidade}: {texto}")
 
     if "loteca" in escolhidos:
-        concursos_locais = {item["concurso"] for item in concursos_loteca()}
-        concurso_local = concurso_loteca_atual()
+        todos_concursos_locais = {item["concurso"] for item in concursos_loteca()}
+        concursos_locais = {
+            concurso for concurso in todos_concursos_locais if loteca_local_pronta(concurso)
+        }
+        concursos_invalidos = todos_concursos_locais - concursos_locais
 
         try:
-            concursos_remotos = [
-                numero
-                for numero in (numero_concurso_loteca(concurso) for concurso in buscar_programacao_loteca())
-                if numero is not None
-            ]
+            programacoes = buscar_programacao_loteca()
         except Exception as erro:
-            estado_local = "presente" if concurso_local else "ausente"
-            print(f"- loteca: concurso atual desconhecido; local: {estado_local} ({erro})")
+            estado_local = (
+                f"{len(concursos_locais)} concurso(s) válido(s)"
+                if concursos_locais
+                else "nenhum concurso válido"
+            )
+            print(f"- loteca: concursos atuais desconhecidos; local: {estado_local} ({erro})")
         else:
-            faltantes_loteca = [numero for numero in concursos_remotos if numero not in concursos_locais]
+            concursos_remotos_por_numero = {
+                numero: concurso
+                for concurso in programacoes
+                if (numero := numero_concurso_loteca(concurso)) is not None
+            }
+            concursos_remotos = list(concursos_remotos_por_numero)
+            if not concursos_remotos:
+                print("- loteca: a Caixa não informou concursos atuais.")
+                concursos_remotos = None
+                return concursos_remotos
+
+            concursos_atuais_locais = concursos_locais & set(concursos_remotos)
+            concursos_invalidos_atuais = concursos_invalidos & set(concursos_remotos)
+            faltantes_loteca = [
+                numero for numero in concursos_remotos if numero not in concursos_atuais_locais
+            ]
             lista_remotos = ", ".join(str(numero) for numero in concursos_remotos) or "nenhum"
-            lista_locais = ", ".join(str(numero) for numero in sorted(concursos_locais, reverse=True)) or "nenhum"
+            lista_locais = (
+                ", ".join(str(numero) for numero in sorted(concursos_atuais_locais, reverse=True))
+                or "nenhum"
+            )
             estado_local = (
                 "presente"
                 if not faltantes_loteca
                 else f"faltando {', '.join(str(numero) for numero in faltantes_loteca)}"
             )
-            print(f"- loteca: concursos atuais {lista_remotos}; local: {lista_locais}; {estado_local}")
+            print(
+                f"- loteca: concursos atuais {lista_remotos}; "
+                f"atuais prontos no banco: {lista_locais}; {estado_local}"
+            )
+
+            if not faltantes_loteca:
+                print(
+                    "- loteca: a checagem confirma presença e integridade; "
+                    "não recota odds já salvas."
+                )
+
+            if concursos_invalidos_atuais:
+                lista_invalidos = ", ".join(
+                    str(numero) for numero in sorted(concursos_invalidos_atuais)
+                )
+                print(f"- loteca: concursos atuais incompletos ou com odds inválidas: {lista_invalidos}")
 
             if faltantes_loteca:
                 loteca_defasada = True
 
     if not defasados and not loteca_defasada:
-        return
+        return concursos_remotos
 
-    if not le_sim_nao("Deseja atualizar os bancos defasados agora? [S/N ou 1/0] "):
-        return
+    if loteca_defasada and not defasados:
+        mensagem_atualizacao = "Deseja baixar os concursos atuais da Loteca agora? [S/N ou 1/0] "
+    else:
+        mensagem_atualizacao = "Deseja atualizar os bancos defasados agora? [S/N ou 1/0] "
+
+    if not le_sim_nao(mensagem_atualizacao):
+        return concursos_remotos
 
     for modalidade, _cobertura in defasados:
         try:
@@ -1142,42 +1244,81 @@ def checa_bancos_historicos(escolhidos):
             print(f"Não consegui atualizar histórico de {modalidade}: {erro}")
 
     if loteca_defasada:
-        try:
-            from gera_loteca import atualizar_loteca
+        from gera_loteca import atualizar_loteca
 
-            caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
-            for concurso in faltantes_loteca:
-                atualizar_loteca(saida=caminho_padrao, concurso=concurso)
-        except Exception as erro:
-            print(f"Não consegui atualizar a Loteca: {erro}")
+        caminho_padrao = os.path.join(os.path.dirname(os.path.abspath(__file__)), "loteca_atual.csv")
+        for concurso in faltantes_loteca:
+            try:
+                atualizar_loteca(
+                    saida=caminho_padrao,
+                    concurso=concurso,
+                    dados_concurso=concursos_remotos_por_numero.get(concurso),
+                )
+            except Exception as erro:
+                print(f"Não consegui atualizar a Loteca {concurso}: {erro}")
+
+    return concursos_remotos
 
 
 def gerar_bilhetes():
     opcoes = opcoes_modalidades()
     imprime_menu(opcoes)
     escolhidos = le_modalidades(opcoes)
-    checa_bancos_historicos(escolhidos)
     bilhetes = []
 
     for modalidade in escolhidos:
         print()
-        total = le_inteiro(f"Quantos bilhetes de {modalidade}? ")
 
         if modalidade == "loteca":
-            config_loteca = configura_loteca()
+            concursos_atuais = checa_bancos_historicos(["loteca"])
+            config_loteca = configura_loteca(concursos_atuais)
+            total = le_inteiro(f"Quantos bilhetes de {modalidade}? ")
+            capacidade = capacidade_bilhetes_loteca(config_loteca["triplos"])
+            if total > capacidade:
+                print(
+                    f"Com essa configuração existem {capacidade} bilhetes distintos; "
+                    f"serão gerados {capacidade}."
+                )
+                total = capacidade
 
-            for numero in range(1, total + 1):
-                bilhete = gera_bilhete_loteca(**config_loteca)
-                bilhetes.append((modalidade, numero, bilhete))
+            assinaturas = set()
+            tentativas = 0
+            variante_reserva = 0
+            while len(assinaturas) < total:
+                variante = len(assinaturas) if config_loteca["modo"] == "razao" else 0
+                bilhete = gera_bilhete_loteca(**config_loteca, variante=variante)
+                assinatura = tuple(tuple(jogo["colunas"]) for jogo in bilhete)
+                tentativas += 1
+
+                if assinatura in assinaturas:
+                    if tentativas < max(100, total * 50):
+                        continue
+                    # Evita laço longo em configurações quase esgotadas.
+                    while variante_reserva < capacidade:
+                        bilhete = gera_bilhete_loteca(
+                            **{**config_loteca, "modo": "razao"},
+                            variante=variante_reserva,
+                        )
+                        variante_reserva += 1
+                        assinatura = tuple(tuple(jogo["colunas"]) for jogo in bilhete)
+                        if assinatura not in assinaturas:
+                            break
+                    else:
+                        break
+
+                assinaturas.add(assinatura)
+                bilhetes.append((modalidade, len(assinaturas), bilhete))
 
             continue
 
+        total = le_inteiro(f"Quantos bilhetes de {modalidade}? ")
         quantidade = quantidade_aposta(modalidade)
         modalidade_normalizada = nome_modalidade(modalidade)
         estrategia = le_estrategia_numerica()
         concursos_historicos = None
 
         if estrategia != "aleatorio":
+            checa_bancos_historicos([modalidade])
             concursos_historicos = le_quantidade_concursos()
             try:
                 bilhetes_historicos, consultados = gera_bilhetes_historicos(
@@ -1186,6 +1327,7 @@ def gerar_bilhetes():
                     estrategia,
                     total,
                     concursos_historicos,
+                    atualizar_historico=False,
                 )
             except Exception as erro:
                 print(f"Não consegui consultar histórico de {modalidade}: {erro}")
@@ -1220,7 +1362,140 @@ def gerar_bilhetes():
     salvar_bilhetes_favoritos(bilhetes)
 
 
-def main():
+def modalidades_para_atualizacao(valores=None):
+    valores = list(valores or [])
+
+    if not valores or any(normaliza_nome(valor) in ("todos", "todas") for valor in valores):
+        return list(MODALIDADES) + ["loteca"]
+
+    modalidades = []
+    for valor in valores:
+        modalidade = nome_modalidade(valor)
+        if modalidade not in modalidades:
+            modalidades.append(modalidade)
+
+    return modalidades
+
+
+def atualizar_bancos(modalidades=None, concurso_loteca=None, force_loteca=False):
+    modalidades = modalidades_para_atualizacao(modalidades)
+    sucesso = True
+
+    for modalidade in (item for item in modalidades if item in MODALIDADES):
+        print(f"Atualizando histórico de {modalidade}...")
+        try:
+            atualizacao_completa = sincronizar_historico(modalidade)
+        except Exception as erro:
+            print(f"Falha ao atualizar {modalidade}: {erro}")
+            sucesso = False
+            continue
+
+        if atualizacao_completa is False:
+            print(f"{modalidade}: atualização não foi concluída integralmente.")
+            sucesso = False
+
+        inicio, fim = intervalo_concursos_numericos(modalidade)
+        total = total_resultados_numericos(modalidade)
+        intervalo = f"{inicio} a {fim}" if inicio is not None else "sem concursos"
+        print(f"{modalidade}: {total} concursos no banco ({intervalo}).")
+
+    if "loteca" in modalidades:
+        from gera_loteca import ARQUIVO_PADRAO, atualizar_loteca
+
+        if concurso_loteca is not None:
+            try:
+                atualizar_loteca(
+                    saida=ARQUIVO_PADRAO,
+                    concurso=concurso_loteca,
+                    force=force_loteca,
+                )
+            except Exception as erro:
+                print(f"Falha ao atualizar Loteca {concurso_loteca}: {erro}")
+                sucesso = False
+        else:
+            try:
+                programacoes = buscar_programacao_loteca()
+            except Exception as erro:
+                print(f"Falha ao consultar concursos atuais da Loteca: {erro}")
+                sucesso = False
+            else:
+                if not programacoes:
+                    print("A Caixa não informou concursos atuais da Loteca.")
+                    sucesso = False
+
+                for dados_concurso in programacoes:
+                    numero = numero_concurso_loteca(dados_concurso)
+                    if numero is None:
+                        print("Ignorando programação da Loteca sem número de concurso.")
+                        sucesso = False
+                        continue
+
+                    try:
+                        atualizar_loteca(
+                            saida=ARQUIVO_PADRAO,
+                            concurso=numero,
+                            force=force_loteca,
+                            dados_concurso=dados_concurso,
+                        )
+                    except Exception as erro:
+                        print(f"Falha ao atualizar Loteca {numero}: {erro}")
+                        sucesso = False
+
+    return sucesso
+
+
+def criar_parser():
+    parser = argparse.ArgumentParser(
+        description="Gera bilhetes ou atualiza os bancos locais do Lotogen."
+    )
+    subcomandos = parser.add_subparsers(dest="comando")
+    atualizar = subcomandos.add_parser(
+        "atualizar",
+        help="Atualiza bancos sem gerar bilhetes.",
+    )
+    atualizar.add_argument(
+        "modalidades",
+        nargs="*",
+        help="Modalidades desejadas; sem valores, atualiza todas.",
+    )
+    atualizar.add_argument(
+        "--concurso",
+        type=int,
+        help="Atualiza somente este concurso da Loteca.",
+    )
+    atualizar.add_argument(
+        "--force",
+        action="store_true",
+        help="Recota a Loteca mesmo quando o concurso já está salvo.",
+    )
+    return parser
+
+
+def main(argv=None):
+    parser = criar_parser()
+    args = parser.parse_args(argv)
+
+    if args.comando == "atualizar":
+        modalidades = args.modalidades
+        if not modalidades and (args.concurso is not None or args.force):
+            modalidades = ["loteca"]
+
+        try:
+            normalizadas = modalidades_para_atualizacao(modalidades)
+        except ValueError as erro:
+            parser.error(str(erro))
+
+        if (args.concurso is not None or args.force) and "loteca" not in normalizadas:
+            parser.error("--concurso e --force só podem ser usados ao atualizar a Loteca.")
+
+        if not atualizar_bancos(
+            normalizadas,
+            concurso_loteca=args.concurso,
+            force_loteca=args.force,
+        ):
+            raise SystemExit(1)
+        return
+
     while True:
         gerar_bilhetes()
 
